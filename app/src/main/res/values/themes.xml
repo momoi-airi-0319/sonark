@@ -1,0 +1,4 @@
+<resources>
+
+    <style name="Theme.Sonark" parent="Theme.MaterialComponents.Light" />
+</resources>

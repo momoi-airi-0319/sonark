@@ -1,0 +1,184 @@
+package md.oak.sonark.ui
+
+import android.app.Application
+import android.content.ComponentName
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import md.oak.sonark.data.model.Song
+import md.oak.sonark.playback.PlaybackService
+
+class PlaybackViewModel(application: Application) : AndroidViewModel(application) {
+
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private val controller: MediaController? get() = if (controllerFuture?.isDone == true) controllerFuture?.get() else null
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
+    private val _currentSong = MutableStateFlow<Song?>(null)
+    val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
+
+    private val _playbackProgress = MutableStateFlow(0L)
+    val playbackProgress: StateFlow<Long> = _playbackProgress.asStateFlow()
+
+    private val _duration = MutableStateFlow(0L)
+    val duration: StateFlow<Long> = _duration.asStateFlow()
+
+    private val _shuffleEnabled = MutableStateFlow(false)
+    val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
+
+    private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
+    val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
+
+    private val _queue = MutableStateFlow<List<Song>>(emptyList())
+    val queue: StateFlow<List<Song>> = _queue.asStateFlow()
+
+    private var progressJob: Job? = null
+
+    init {
+        val sessionToken = SessionToken(application, ComponentName(application, PlaybackService::class.java))
+        controllerFuture = MediaController.Builder(application, sessionToken).buildAsync()
+        controllerFuture?.addListener({
+            setupController()
+        }, MoreExecutors.directExecutor())
+    }
+
+    private fun setupController() {
+        val controller = this.controller ?: return
+        controller.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _isPlaying.value = isPlaying
+                if (isPlaying) {
+                    startProgressUpdate()
+                } else {
+                    stopProgressUpdate()
+                }
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val mediaId = mediaItem?.mediaId
+                _currentSong.value = _queue.value.find { it.id.toString() == mediaId }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) {
+                    _duration.value = controller.duration
+                }
+            }
+
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                _shuffleEnabled.value = shuffleModeEnabled
+            }
+
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                _repeatMode.value = repeatMode
+            }
+        })
+        _isPlaying.value = controller.isPlaying
+        _duration.value = controller.duration
+        _shuffleEnabled.value = controller.shuffleModeEnabled
+        _repeatMode.value = controller.repeatMode
+        if (controller.isPlaying) startProgressUpdate()
+    }
+
+    fun playSong(song: Song) {
+        playQueue(listOf(song), 0)
+    }
+
+    fun playQueue(songs: List<Song>, startIndex: Int = 0) {
+        val controller = this.controller ?: return
+        _queue.value = songs
+        
+        val mediaItems = songs.map { song ->
+            MediaItem.Builder()
+                .setMediaId(song.id.toString())
+                .setUri(song.data)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(song.title)
+                        .setArtist(song.artist)
+                        .setAlbumTitle(song.album)
+                        .build()
+                )
+                .build()
+        }
+
+        controller.setMediaItems(mediaItems, startIndex, 0L)
+        controller.prepare()
+        controller.play()
+        _currentSong.value = songs.getOrNull(startIndex)
+    }
+
+    fun togglePlayback() {
+        val controller = this.controller ?: return
+        if (controller.isPlaying) {
+            controller.pause()
+        } else {
+            controller.play()
+        }
+    }
+
+    fun toggleShuffle() {
+        val controller = this.controller ?: return
+        controller.shuffleModeEnabled = !controller.shuffleModeEnabled
+    }
+
+    fun toggleRepeatMode() {
+        val controller = this.controller ?: return
+        val nextMode = when (controller.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_OFF
+            else -> Player.REPEAT_MODE_OFF
+        }
+        controller.repeatMode = nextMode
+    }
+
+    fun seekTo(position: Long) {
+        controller?.seekTo(position)
+        _playbackProgress.value = position
+    }
+
+    fun skipNext() {
+        controller?.seekToNext()
+    }
+
+    fun skipPrevious() {
+        controller?.seekToPrevious()
+    }
+
+    private fun startProgressUpdate() {
+        progressJob?.cancel()
+        progressJob = viewModelScope.launch {
+            while (true) {
+                _playbackProgress.value = controller?.currentPosition ?: 0L
+                delay(1000)
+            }
+        }
+    }
+
+    private fun stopProgressUpdate() {
+        progressJob?.cancel()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        controllerFuture?.let {
+            MediaController.releaseFuture(it)
+        }
+        stopProgressUpdate()
+    }
+}
