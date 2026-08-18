@@ -25,44 +25,37 @@ Sonark is a streamlined music player designed for users who maintain a personal 
 
 ## Implementation Steps
 
-### Task_1_Infrastructure_Data: Configure project dependencies (Media3, Navigation 3, Adaptive, Google Drive API), set up Navigation 3 architecture, and implement local storage and Google Drive music retrieval.
+### Refinement_1_Permissions: Update MainActivity to handle permission results and re-trigger song loading in MainViewModel.
 - **Status:** COMPLETED
-- **Updates:** Refinement complete:
+- **Updates:** Completed Refinement 1:
 - **Acceptance Criteria:**
-  - Project builds successfully
-  - Local storage scanning retrieves music files
-  - Google Drive API integration is functional with API_KEY/Auth
-  - Navigation 3 skeleton is implemented
+  - MainActivity uses ActivityResultLauncher correctly
+  - loadSongs() is called immediately after permission is granted
 
-### Task_2_Playback_Engine: Implement Jetpack Media3 MediaSessionService and ExoPlayer to handle background audio playback, seek bars, and media notifications.
+### Refinement_2_Settings_Sync: Link the 'Local Storage' toggle in Settings to the scanning logic.
 - **Status:** COMPLETED
-- **Updates:** Completed Task 2:
+- **Updates:** Completed Refinement 2:
 - **Acceptance Criteria:**
-  - Audio playback works for local and remote files
-  - Media notification shows controls and metadata
-  - Playback state is synced with the UI
+  - Toggling off 'Local Storage' clears the library or stops scanning
+  - State is persisted and respected by MainViewModel
 
-### Task_3_Adaptive_UI: Develop the unified music library and playback UI using Compose Material Adaptive for optimized layouts across phones and tablets.
+### Refinement_3_UI_Feedback: Add a loading indicator and an empty state message to LibraryScreen.
 - **Status:** COMPLETED
-- **Updates:** Completed Task 3:
+- **Updates:** Completed Refinement 3:
 - **Acceptance Criteria:**
-  - UI is adaptive across different screen sizes
-  - Library browsing and search functionality work
-  - Playback screen includes queue management, shuffle, and repeat
-  - App does not crash
+  - User sees a CircularProgressIndicator while loading
+  - User sees 'No songs found' message when the list is empty
 
-### Task_4_Run_Verify: Final Run and Verify: Ensure application stability, confirm alignment with user requirements, and report critical UI issues.
+### Refinement_4_Final_Verification: Final verification of the auto-scan flow using critic_agent.
 - **Status:** COMPLETED
-- **Updates:** Final verification complete:
-- Adaptive UI logic confirmed (Navigation Rail, Grid).
-- Google Drive sign-in flow functional.
-- Settings screen polished and fully implemented.
-- No crashes or placeholders.
-The app meets all project brief requirements.
+- **Updates:** Final verification successful:
+- Permission flow is now robust and re-triggers scans correctly.
+- Loading and Empty states are present and polished.
+- Settings toggle is correctly linked to the music scan logic.
+- UI is adaptive across devices.
+All local storage auto-scan issues have been resolved.
 - **Acceptance Criteria:**
-  - App does not crash during standard usage
-  - Build pass
-  - All features functional as per project brief
-  - Make sure all existing tests pass
+  - App correctly scans and displays music immediately after permission is granted
+  - UI feedback is present
 - **Duration:** N/A
 

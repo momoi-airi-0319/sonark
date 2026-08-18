@@ -1,67 +1,65 @@
 package md.oak.sonark
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
-import md.oak.sonark.data.repository.MusicRepository
-import md.oak.sonark.navigation.*
-import md.oak.sonark.ui.MainViewModel
-import md.oak.sonark.ui.PlaybackViewModel
-import md.oak.sonark.ui.screens.LibraryScreen
-import md.oak.sonark.ui.screens.PlayerScreen
-import md.oak.sonark.ui.screens.SettingsScreen
-import md.oak.sonark.ui.theme.SonarkTheme
-import android.app.Activity
-import android.content.Intent
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
-import androidx.activity.compose.rememberLauncherForActivityResult
+import md.oak.sonark.data.repository.MusicRepository
+import md.oak.sonark.data.repository.SettingsRepository
+import md.oak.sonark.navigation.LibraryKey
+import md.oak.sonark.navigation.Navigator
+import md.oak.sonark.navigation.PlayerKey
+import md.oak.sonark.navigation.SettingsKey
+import md.oak.sonark.navigation.rememberNavigationState
+import md.oak.sonark.navigation.toEntries
+import md.oak.sonark.ui.MainViewModel
+import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SettingsViewModel
+import md.oak.sonark.ui.screens.LibraryScreen
+import md.oak.sonark.ui.screens.PlayerScreen
+import md.oak.sonark.ui.screens.SettingsScreen
+import md.oak.sonark.ui.theme.SonarkTheme
 
 class MainActivity : ComponentActivity() {
-
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
-            // Permission granted
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         val repository = MusicRepository(contentResolver)
+        val settingsRepository = SettingsRepository(applicationContext)
 
         setContent {
             SonarkTheme {
-                val viewModel: MainViewModel = viewModel { MainViewModel(repository) }
+                val viewModel: MainViewModel = viewModel { MainViewModel(repository, settingsRepository) }
                 val playbackViewModel: PlaybackViewModel = viewModel { PlaybackViewModel(application) }
-                val settingsViewModel: SettingsViewModel = viewModel { SettingsViewModel(application) }
+                val settingsViewModel: SettingsViewModel = viewModel { SettingsViewModel(settingsRepository) }
                 
                 val gso = remember {
                     GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -103,9 +101,33 @@ class MainActivity : ComponentActivity() {
                 )
                 val navigator = remember { Navigator(navigationState) }
 
+                val permissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions()
+                ) { permissions ->
+                    val isGranted = permissions.values.all { it }
+                    if (isGranted) {
+                        viewModel.loadSongs()
+                    } else {
+                        viewModel.onPermissionDenied()
+                    }
+                }
+
+                val requestPermission = {
+                    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        Manifest.permission.READ_MEDIA_AUDIO
+                    } else {
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                    }
+
+                    if (ContextCompat.checkSelfPermission(this@MainActivity, permission) == PackageManager.PERMISSION_GRANTED) {
+                        viewModel.loadSongs()
+                    } else {
+                        permissionLauncher.launch(arrayOf(permission))
+                    }
+                }
+
                 LaunchedEffect(Unit) {
-                    checkAndRequestPermissions()
-                    viewModel.loadSongs()
+                    requestPermission()
                     
                     // Check for existing Google account
                     val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
@@ -139,7 +161,9 @@ class MainActivity : ComponentActivity() {
                     val entryProvider = remember {
                         entryProvider {
                             entry<LibraryKey> {
+                                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                                 LibraryScreen(
+                                    uiState = uiState,
                                     songs = songs,
                                     searchQuery = searchQuery,
                                     onSearchQueryChange = { viewModel.setSearchQuery(it) },
@@ -148,7 +172,8 @@ class MainActivity : ComponentActivity() {
                                     onSongClick = { song ->
                                         playbackViewModel.playQueue(songs, songs.indexOf(song))
                                         navigator.navigate(PlayerKey)
-                                    }
+                                    },
+                                    onRefresh = requestPermission
                                 )
                             }
                             entry<PlayerKey> {
@@ -192,18 +217,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-        }
-    }
-
-    private fun checkAndRequestPermissions() {
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_AUDIO
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-
-        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissionLauncher.launch(permission)
         }
     }
 }
