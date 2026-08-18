@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.Song
 import md.oak.sonark.ui.SortOrder
 import md.oak.sonark.ui.UIState
@@ -31,11 +33,12 @@ import md.oak.sonark.ui.theme.SonarkTheme
 @Composable
 fun LibraryScreen(
     uiState: UIState,
-    songs: List<Song>,
+    albums: List<Album>,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     sortOrder: SortOrder,
     onSortOrderChange: (SortOrder) -> Unit,
+    onAlbumClick: (Album) -> Unit,
     onSongClick: (Song) -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
@@ -96,13 +99,11 @@ fun LibraryScreen(
                     UIState.LOADING -> {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     }
-                    UIState.PERMISSION_DENIED -> {
+                    UIState.UNAUTHENTICATED -> {
                         EmptyState(
                             icon = Icons.Rounded.Security,
-                            message = "Permission Denied",
-                            description = "Permission required to access music files. Please grant permission to scan your local storage.",
-                            actionLabel = "Grant Permission",
-                            onAction = onRefresh,
+                            message = "Not Connected",
+                            description = "Please connect your Google Drive account in Settings to access your music.",
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
@@ -120,25 +121,25 @@ fun LibraryScreen(
                         EmptyState(
                             icon = Icons.Rounded.LibraryMusic,
                             message = "No Songs Found",
-                            description = "No songs found. Please check your storage or enable Local Storage in Settings.",
+                            description = "No songs found in your 'Vault' directory on Google Drive.",
                             modifier = Modifier.align(Alignment.Center)
                         )
                     }
                     UIState.SUCCESS -> {
-                        if (songs.isEmpty() && searchQuery.isNotEmpty()) {
+                        if (albums.isEmpty() && searchQuery.isNotEmpty()) {
                             EmptyState(
                                 icon = Icons.Default.Search,
                                 message = "No Results",
-                                description = "No songs found matching \"$searchQuery\"",
+                                description = "No albums found matching \"$searchQuery\"",
                                 actionLabel = "Clear Search",
                                 onAction = { onSearchQueryChange("") },
                                 modifier = Modifier.align(Alignment.Center)
                             )
-                        } else if (songs.isEmpty()) {
+                        } else if (albums.isEmpty()) {
                             EmptyState(
                                 icon = Icons.Rounded.LibraryMusic,
                                 message = "No Songs Found",
-                                description = "No songs found. Please check your storage or enable Local Storage in Settings.",
+                                description = "No songs found in your 'Vault' directory on Google Drive.",
                                 modifier = Modifier.align(Alignment.Center)
                             )
                         } else {
@@ -150,34 +151,52 @@ fun LibraryScreen(
                                     verticalArrangement = Arrangement.spacedBy(16.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    items(songs) { song ->
-                                        LibraryGridItem(song = song, onClick = { onSongClick(song) })
+                                    items(albums) { album ->
+                                        LibraryGridItem(album = album, onClick = { onAlbumClick(album) })
                                     }
                                 }
                             } else {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    items(songs) { song ->
-                                        ListItem(
-                                            headlineContent = { Text(song.title) },
-                                            supportingContent = { Text(song.artist) },
-                                            leadingContent = {
-                                                Surface(
-                                                    modifier = Modifier.size(48.dp),
-                                                    shape = MaterialTheme.shapes.small,
-                                                    color = MaterialTheme.colorScheme.surfaceVariant
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Text(
-                                                            text = song.title.firstOrNull()?.uppercase() ?: "?",
-                                                            style = MaterialTheme.typography.titleMedium
-                                                        )
+                                    albums.forEach { album ->
+                                        item {
+                                            Text(
+                                                text = album.title,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(16.dp)
+                                            )
+                                        }
+                                        items(album.songs) { song ->
+                                            ListItem(
+                                                headlineContent = { Text(song.title) },
+                                                supportingContent = { Text(song.artist) },
+                                                leadingContent = {
+                                                    Surface(
+                                                        modifier = Modifier.size(48.dp),
+                                                        shape = MaterialTheme.shapes.small,
+                                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                                    ) {
+                                                        if (song.imageUrl != null) {
+                                                            AsyncImage(
+                                                                model = song.imageUrl,
+                                                                contentDescription = null,
+                                                                modifier = Modifier.fillMaxSize()
+                                                            )
+                                                        } else {
+                                                            Box(contentAlignment = Alignment.Center) {
+                                                                Text(
+                                                                    text = song.title.firstOrNull()?.uppercase() ?: "?",
+                                                                    style = MaterialTheme.typography.titleMedium
+                                                                )
+                                                            }
+                                                        }
                                                     }
-                                                }
-                                            },
-                                            modifier = Modifier.clickable { onSongClick(song) }
-                                        )
+                                                },
+                                                modifier = Modifier.clickable { onSongClick(song) }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -236,7 +255,7 @@ private fun EmptyState(
 }
 
 @Composable
-fun LibraryGridItem(song: Song, onClick: () -> Unit) {
+fun LibraryGridItem(album: Album, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -251,21 +270,29 @@ fun LibraryGridItem(song: Song, onClick: () -> Unit) {
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = song.title.firstOrNull()?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.displaySmall
+                if (album.imageUrl != null) {
+                    AsyncImage(
+                        model = album.imageUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize()
                     )
+                } else {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = album.title.firstOrNull()?.uppercase() ?: "?",
+                            style = MaterialTheme.typography.displaySmall
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = song.title,
+                text = album.title,
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1
             )
             Text(
-                text = song.artist,
+                text = album.artist,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.secondary,
                 maxLines = 1
@@ -280,11 +307,12 @@ fun LibraryScreenLoadingPreview() {
     SonarkTheme {
         LibraryScreen(
             uiState = UIState.LOADING,
-            songs = emptyList(),
+            albums = emptyList(),
             searchQuery = "",
             onSearchQueryChange = {},
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
+            onAlbumClick = {},
             onSongClick = {},
             onRefresh = {}
         )
@@ -297,11 +325,12 @@ fun LibraryScreenEmptyPreview() {
     SonarkTheme {
         LibraryScreen(
             uiState = UIState.EMPTY,
-            songs = emptyList(),
+            albums = emptyList(),
             searchQuery = "",
             onSearchQueryChange = {},
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
+            onAlbumClick = {},
             onSongClick = {},
             onRefresh = {}
         )
@@ -310,15 +339,16 @@ fun LibraryScreenEmptyPreview() {
 
 @Preview(showBackground = true, device = "spec:width=411dp,height=891dp")
 @Composable
-fun LibraryScreenPermissionPreview() {
+fun LibraryScreenUnauthenticatedPreview() {
     SonarkTheme {
         LibraryScreen(
-            uiState = UIState.PERMISSION_DENIED,
-            songs = emptyList(),
+            uiState = UIState.UNAUTHENTICATED,
+            albums = emptyList(),
             searchQuery = "",
             onSearchQueryChange = {},
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
+            onAlbumClick = {},
             onSongClick = {},
             onRefresh = {}
         )

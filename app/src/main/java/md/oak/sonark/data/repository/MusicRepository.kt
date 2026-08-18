@@ -1,63 +1,103 @@
 package md.oak.sonark.data.repository
 
-import android.content.ContentResolver
-import android.provider.MediaStore
+import com.google.api.services.drive.Drive
+import com.google.api.services.drive.model.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import md.oak.sonark.data.model.Song
 
-class MusicRepository(private val contentResolver: ContentResolver) {
+class MusicRepository {
 
-    suspend fun getLocalSongs(): List<Song> = withContext(Dispatchers.IO) {
+    private var driveService: Drive? = null
+
+    fun setDriveService(service: Drive?) {
+        this.driveService = service
+    }
+
+    fun isServiceSet(): Boolean = driveService != null
+
+    suspend fun getDriveSongs(): List<Song> = withContext(Dispatchers.IO) {
+        val service = driveService ?: return@withContext emptyList()
         val songs = mutableListOf<Song>()
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.DATA,
-            MediaStore.Audio.Media.ALBUM_ID
-        )
 
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-        val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
+        try {
+            // 1. Find the "Vault" folder
+            val vaultFolder = findFolder(service, "Vault", "root") ?: return@withContext emptyList()
 
-        contentResolver.query(
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            null,
-            sortOrder
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-            val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-            val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-            val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
-            val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            // 2. List album folders in "Vault"
+            val albumFolders = listFolders(service, vaultFolder.id)
 
-            while (cursor.moveToNext()) {
-                songs.add(
-                    Song(
-                        id = cursor.getLong(idColumn),
-                        title = cursor.getString(titleColumn),
-                        artist = cursor.getString(artistColumn),
-                        album = cursor.getString(albumColumn),
-                        duration = cursor.getLong(durationColumn),
-                        data = cursor.getString(dataColumn),
-                        albumId = cursor.getLong(albumIdColumn)
-                    )
-                )
+            for (albumFolder in albumFolders) {
+                // 3. List files in album folder
+                val files = listFiles(service, albumFolder.id)
+                
+                // Find cover.jpg if present
+                val coverFile = files.find { it.name.equals("cover.jpg", ignoreCase = true) }
+                val imageUrl = coverFile?.let { "https://drive.google.com/thumbnail?id=${it.id}&sz=w500" }
+
+                for (file in files) {
+                    if (isAudioFile(file)) {
+                        songs.add(parseSong(file, albumFolder.name, imageUrl))
+                    }
+                }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
+
         songs
     }
 
-    // Google Drive Skeleton
-    suspend fun getDriveSongs(): List<Song> = withContext(Dispatchers.IO) {
-        // TODO: Implement Google Drive API retrieval
-        emptyList()
+    private fun findFolder(service: Drive, name: String, parentId: String): File? {
+        val query = "name = '$name' and mimeType = 'application/vnd.google-apps.folder' and '$parentId' in parents and trashed = false"
+        val result = service.files().list()
+            .setQ(query)
+            .setFields("files(id, name)")
+            .execute()
+        return result.files.firstOrNull()
+    }
+
+    private fun listFolders(service: Drive, parentId: String): List<File> {
+        val query = "'$parentId' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        val result = service.files().list()
+            .setQ(query)
+            .setFields("files(id, name)")
+            .execute()
+        return result.files ?: emptyList()
+    }
+
+    private fun listFiles(service: Drive, parentId: String): List<File> {
+        val query = "'$parentId' in parents and trashed = false"
+        val result = service.files().list()
+            .setQ(query)
+            .setFields("files(id, name, mimeType, size)")
+            .execute()
+        return result.files ?: emptyList()
+    }
+
+    private fun isAudioFile(file: File): Boolean {
+        val name = file.name.lowercase()
+        return name.endsWith(".mp3") || name.endsWith(".flac") || name.endsWith(".wav") || name.endsWith(".m4a")
+    }
+
+    private fun parseSong(file: File, albumName: String, imageUrl: String?): Song {
+        // Filename format: "01 - Song Title.mp3"
+        val fileName = file.name.substringBeforeLast(".")
+        val title = if (fileName.contains(" - ")) {
+            fileName.substringAfter(" - ").trim()
+        } else {
+            fileName
+        }
+
+        return Song(
+            id = file.id,
+            title = title,
+            artist = "Unknown Artist", // Could be parsed if format was "Artist - Title"
+            album = albumName,
+            duration = 0, // Drive API doesn't easily give duration for all audio files without extra metadata
+            data = "https://www.googleapis.com/drive/v3/files/${file.id}?alt=media", // API download link
+            albumId = file.id, // Using file ID as albumId for simplicity or we could use albumFolder.id
+            imageUrl = imageUrl
+        )
     }
 }

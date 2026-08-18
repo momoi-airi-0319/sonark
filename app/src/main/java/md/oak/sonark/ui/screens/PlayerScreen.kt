@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
+import coil.compose.AsyncImage
 import md.oak.sonark.data.model.Song
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +75,7 @@ fun PlayerScreen(
             if (song != null) {
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Album Art Placeholder
+                // Album Art
                 Surface(
                     modifier = Modifier
                         .size(300.dp)
@@ -82,13 +83,21 @@ fun PlayerScreen(
                         .clip(MaterialTheme.shapes.extraLarge),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Rounded.MusicNote,
+                    if (song.imageUrl != null) {
+                        AsyncImage(
+                            model = song.imageUrl,
                             contentDescription = null,
-                            modifier = Modifier.size(120.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            modifier = Modifier.fillMaxSize()
                         )
+                    } else {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.MusicNote,
+                                contentDescription = null,
+                                modifier = Modifier.size(120.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
                     }
                 }
 

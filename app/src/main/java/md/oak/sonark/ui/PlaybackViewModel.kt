@@ -2,6 +2,7 @@ package md.oak.sonark.ui
 
 import android.app.Application
 import android.content.ComponentName
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -70,7 +71,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val mediaId = mediaItem?.mediaId
-                _currentSong.value = _queue.value.find { it.id.toString() == mediaId }
+                _currentSong.value = _queue.value.find { it.id == mediaId }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -104,13 +105,14 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         
         val mediaItems = songs.map { song ->
             MediaItem.Builder()
-                .setMediaId(song.id.toString())
+                .setMediaId(song.id)
                 .setUri(song.data)
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(song.title)
                         .setArtist(song.artist)
                         .setAlbumTitle(song.album)
+                        .setArtworkUri(song.imageUrl?.let { Uri.parse(it) })
                         .build()
                 )
                 .build()

@@ -1,10 +1,9 @@
 package md.oak.sonark
 
-import android.Manifest
 import android.app.Activity
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -26,10 +25,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.http.javanet.NetHttpTransport
+import com.google.api.client.json.gson.GsonFactory
+import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
+import md.oak.sonark.data.Dependencies
+import md.oak.sonark.data.auth.DriveAuthHolder
 import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.data.repository.SettingsRepository
 import md.oak.sonark.navigation.LibraryKey
@@ -52,8 +58,38 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val repository = MusicRepository(contentResolver)
-        val settingsRepository = SettingsRepository(applicationContext)
+        Dependencies.init(applicationContext)
+        val repository = Dependencies.musicRepository
+        val settingsRepository = Dependencies.settingsRepository
+
+        fun updateDriveService(account: GoogleSignInAccount?) {
+            if (account != null) {
+                try {
+                    val credential = GoogleAccountCredential.usingOAuth2(
+                        this, listOf(DriveScopes.DRIVE_READONLY)
+                    ).setSelectedAccount(account.account)
+                    
+                    DriveAuthHolder.credential = credential
+                    
+                    val driveService = Drive.Builder(
+                        NetHttpTransport(),
+                        GsonFactory.getDefaultInstance(),
+                        credential
+                    ).setApplicationName("Sonark").build()
+                    
+                    repository.setDriveService(driveService)
+                    Log.d("Sonark", "Drive service updated for ${account.email}")
+                } catch (e: Exception) {
+                    Log.e("Sonark", "Error updating drive service", e)
+                    DriveAuthHolder.credential = null
+                    repository.setDriveService(null)
+                }
+            } else {
+                DriveAuthHolder.credential = null
+                repository.setDriveService(null)
+                Log.d("Sonark", "Drive service cleared")
+            }
+        }
 
         setContent {
             SonarkTheme {
@@ -77,9 +113,29 @@ class MainActivity : ComponentActivity() {
                         try {
                             val account = task.getResult(ApiException::class.java)
                             settingsViewModel.setGoogleAccount(account?.email)
+                            updateDriveService(account)
+                            viewModel.loadSongs()
                         } catch (e: ApiException) {
+                            Log.e("Sonark", "Sign-in failed with status code: ${e.statusCode}")
+                            Toast.makeText(this@MainActivity, "Error Code: ${e.statusCode}", Toast.LENGTH_LONG).show()
                             settingsViewModel.setGoogleAccount(null)
+                            updateDriveService(null)
+                            viewModel.setUnauthenticated()
                         }
+                    } else {
+                        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                        try {
+                            task.getResult(ApiException::class.java)
+                        } catch (e: ApiException) {
+                            Log.e("Sonark", "Sign-in failed with status code: ${e.statusCode}")
+                            Toast.makeText(this@MainActivity, "Error Code: ${e.statusCode}", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            val message = if (result.resultCode == Activity.RESULT_CANCELED) "Sign-in cancelled" else "Sign-in failed"
+                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                        }
+                        settingsViewModel.setGoogleAccount(null)
+                        updateDriveService(null)
+                        viewModel.setUnauthenticated()
                     }
                 }
 
@@ -101,38 +157,15 @@ class MainActivity : ComponentActivity() {
                 )
                 val navigator = remember { Navigator(navigationState) }
 
-                val permissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestMultiplePermissions()
-                ) { permissions ->
-                    val isGranted = permissions.values.all { it }
-                    if (isGranted) {
-                        viewModel.loadSongs()
-                    } else {
-                        viewModel.onPermissionDenied()
-                    }
-                }
-
-                val requestPermission = {
-                    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        Manifest.permission.READ_MEDIA_AUDIO
-                    } else {
-                        Manifest.permission.READ_EXTERNAL_STORAGE
-                    }
-
-                    if (ContextCompat.checkSelfPermission(this@MainActivity, permission) == PackageManager.PERMISSION_GRANTED) {
-                        viewModel.loadSongs()
-                    } else {
-                        permissionLauncher.launch(arrayOf(permission))
-                    }
-                }
-
                 LaunchedEffect(Unit) {
-                    requestPermission()
-                    
                     // Check for existing Google account
                     val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
                     if (lastAccount != null) {
                         settingsViewModel.setGoogleAccount(lastAccount.email)
+                        updateDriveService(lastAccount)
+                        viewModel.loadSongs()
+                    } else {
+                        viewModel.setUnauthenticated()
                     }
                 }
 
@@ -162,18 +195,23 @@ class MainActivity : ComponentActivity() {
                         entryProvider {
                             entry<LibraryKey> {
                                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                                val albums by viewModel.albums.collectAsStateWithLifecycle()
                                 LibraryScreen(
                                     uiState = uiState,
-                                    songs = songs,
+                                    albums = albums,
                                     searchQuery = searchQuery,
                                     onSearchQueryChange = { viewModel.setSearchQuery(it) },
                                     sortOrder = sortOrder,
                                     onSortOrderChange = { viewModel.setSortOrder(it) },
+                                    onAlbumClick = { album ->
+                                        playbackViewModel.playQueue(album.songs, 0)
+                                        navigator.navigate(PlayerKey)
+                                    },
                                     onSongClick = { song ->
                                         playbackViewModel.playQueue(songs, songs.indexOf(song))
                                         navigator.navigate(PlayerKey)
                                     },
-                                    onRefresh = requestPermission
+                                    onRefresh = { viewModel.loadSongs() }
                                 )
                             }
                             entry<PlayerKey> {
@@ -197,12 +235,17 @@ class MainActivity : ComponentActivity() {
                             entry<SettingsKey> {
                                 SettingsScreen(
                                     viewModel = settingsViewModel,
-                                    onConnectGoogleDrive = {
+                                    onConnectClick = {
+                                        Log.e("Sonark", "onConnectClick triggered")
                                         if (settingsViewModel.googleAccountName.value == null) {
+                                            Log.e("Sonark", "DEBUG: Launching Sign-In")
+                                            Toast.makeText(this@MainActivity, "DEBUG: Launching Sign-In", Toast.LENGTH_SHORT).show()
                                             googleSignInLauncher.launch(googleSignInClient.signInIntent)
                                         } else {
                                             googleSignInClient.signOut().addOnCompleteListener {
                                                 settingsViewModel.setGoogleAccount(null)
+                                                updateDriveService(null)
+                                                viewModel.loadSongs()
                                             }
                                         }
                                     }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.Song
 import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.data.repository.SettingsRepository
@@ -13,7 +14,7 @@ enum class SortOrder {
 }
 
 enum class UIState {
-    LOADING, SUCCESS, EMPTY, ERROR, PERMISSION_DENIED
+    LOADING, SUCCESS, EMPTY, ERROR, UNAUTHENTICATED
 }
 
 class MainViewModel(
@@ -34,9 +35,20 @@ class MainViewModel(
 
     val songs: StateFlow<List<Song>> = combine(_allSongs, _searchQuery, _sortOrder) { songs, query, sort ->
         songs.filter { 
-            it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true)
+            it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true) || it.album.contains(query, ignoreCase = true)
         }.sortedBy { 
             if (sort == SortOrder.TITLE) it.title.lowercase() else it.artist.lowercase()
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val albums: StateFlow<List<Album>> = songs.map { songList ->
+        songList.groupBy { it.album }.map { (albumTitle, albumSongs) ->
+            Album(
+                title = albumTitle,
+                artist = albumSongs.firstOrNull()?.artist ?: "Unknown Artist",
+                imageUrl = albumSongs.firstOrNull()?.imageUrl,
+                songs = albumSongs
+            )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -44,30 +56,19 @@ class MainViewModel(
     val selectedSong: StateFlow<Song?> = _selectedSong
 
     init {
-        viewModelScope.launch {
-            settingsRepository.localStorageEnabled.collectLatest { enabled ->
-                if (enabled) {
-                    loadSongs()
-                } else {
-                    _allSongs.value = emptyList()
-                    _uiState.value = UIState.EMPTY
-                }
-            }
-        }
+        loadSongs()
     }
 
     fun loadSongs() {
         viewModelScope.launch {
-            val enabled = settingsRepository.localStorageEnabled.first()
-            if (!enabled) {
-                _allSongs.value = emptyList()
-                _uiState.value = UIState.EMPTY
+            if (!repository.isServiceSet()) {
+                setUnauthenticated()
                 return@launch
             }
-
+            
             _uiState.value = UIState.LOADING
             try {
-                val songs = repository.getLocalSongs()
+                val songs = repository.getDriveSongs()
                 _allSongs.value = songs
                 _uiState.value = if (songs.isEmpty()) UIState.EMPTY else UIState.SUCCESS
             } catch (e: Exception) {
@@ -76,8 +77,9 @@ class MainViewModel(
         }
     }
 
-    fun onPermissionDenied() {
-        _uiState.value = UIState.PERMISSION_DENIED
+    fun setUnauthenticated() {
+        _uiState.value = UIState.UNAUTHENTICATED
+        _allSongs.value = emptyList()
     }
 
     fun setSearchQuery(query: String) {

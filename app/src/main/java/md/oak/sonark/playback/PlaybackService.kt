@@ -2,16 +2,62 @@ package md.oak.sonark.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.util.Log
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import md.oak.sonark.data.auth.DriveAuthHolder
 
+@UnstableApi
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this).build()
+        
+        val httpDataSourceFactory = DataSource.Factory {
+            val dataSource = DefaultHttpDataSource.Factory()
+                .setUserAgent("Sonark")
+                .setAllowCrossProtocolRedirects(true)
+                .createDataSource()
+            
+            object : DataSource by dataSource {
+                override fun open(dataSpec: DataSpec): Long {
+                    val token = try {
+                        DriveAuthHolder.credential?.getToken()
+                    } catch (e: Exception) {
+                        Log.e("PlaybackService", "Error getting Drive token", e)
+                        null
+                    }
+                    
+                    val authorizedDataSpec = if (token != null) {
+                        dataSpec.buildUpon()
+                            .setHttpRequestHeaders(mapOf("Authorization" to "Bearer $token"))
+                            .build()
+                    } else {
+                        dataSpec
+                    }
+                    return dataSource.open(authorizedDataSpec)
+                }
+            }
+        }
+
+        val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(httpDataSourceFactory))
+            .build()
+        
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e("PlaybackService", "Player error: ${error.message}", error)
+            }
+        })
         
         val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
