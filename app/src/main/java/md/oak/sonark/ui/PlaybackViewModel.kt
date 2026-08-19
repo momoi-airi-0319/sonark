@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -20,7 +21,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import md.oak.sonark.data.model.Song
 import md.oak.sonark.playback.PlaybackService
+import androidx.core.net.toUri
+import kotlin.time.Duration.Companion.milliseconds
 
+@UnstableApi
 class PlaybackViewModel(application: Application) : AndroidViewModel(application) {
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -95,24 +99,25 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         if (controller.isPlaying) startProgressUpdate()
     }
 
-    fun playSong(song: Song) {
-        playQueue(listOf(song), 0)
-    }
-
     fun playQueue(songs: List<Song>, startIndex: Int = 0) {
         val controller = this.controller ?: return
         _queue.value = songs
         
         val mediaItems = songs.map { song ->
+            val uri = if (song.localPath != null) {
+                Uri.fromFile(java.io.File(song.localPath))
+            } else {
+                song.data.toUri()
+            }
             MediaItem.Builder()
                 .setMediaId(song.id)
-                .setUri(song.data)
+                .setUri(uri)
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(song.title)
                         .setArtist(song.artist)
                         .setAlbumTitle(song.album)
-                        .setArtworkUri(song.imageUrl?.let { Uri.parse(it) })
+                        .setArtworkUri(song.imageUrl?.toUri())
                         .build()
                 )
                 .build()
@@ -167,7 +172,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         progressJob = viewModelScope.launch {
             while (true) {
                 _playbackProgress.value = controller?.currentPosition ?: 0L
-                delay(1000)
+                delay(1000.milliseconds)
             }
         }
     }
@@ -177,7 +182,6 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     }
 
     override fun onCleared() {
-        super.onCleared()
         controllerFuture?.let {
             MediaController.releaseFuture(it)
         }

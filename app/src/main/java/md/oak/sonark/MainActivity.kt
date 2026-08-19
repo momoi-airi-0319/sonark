@@ -19,12 +19,17 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffo
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import coil.Coil
+import coil.ImageLoader
+import coil.intercept.Interceptor
+import coil.request.ImageResult
 import com.google.android.gms.auth.api.signin.GoogleSignIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
@@ -36,8 +41,7 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import md.oak.sonark.data.Dependencies
 import md.oak.sonark.data.auth.DriveAuthHolder
-import md.oak.sonark.data.repository.MusicRepository
-import md.oak.sonark.data.repository.SettingsRepository
+import md.oak.sonark.navigation.AlbumKey
 import md.oak.sonark.navigation.LibraryKey
 import md.oak.sonark.navigation.Navigator
 import md.oak.sonark.navigation.PlayerKey
@@ -47,6 +51,7 @@ import md.oak.sonark.navigation.toEntries
 import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SettingsViewModel
+import md.oak.sonark.ui.screens.AlbumScreen
 import md.oak.sonark.ui.screens.LibraryScreen
 import md.oak.sonark.ui.screens.PlayerScreen
 import md.oak.sonark.ui.screens.SettingsScreen
@@ -61,6 +66,34 @@ class MainActivity : ComponentActivity() {
         Dependencies.init(applicationContext)
         val repository = Dependencies.musicRepository
         val settingsRepository = Dependencies.settingsRepository
+
+        val imageLoader = ImageLoader.Builder(this)
+            .components {
+                add(object : Interceptor {
+                    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+                        val request = chain.request
+                        val url = request.data.toString()
+                        if (url.contains("googleapis.com") || url.contains("drive.google.com")) {
+                            val token = withContext(Dispatchers.IO) {
+                                try {
+                                    DriveAuthHolder.credential?.getToken()
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
+                            if (token != null) {
+                                val authenticatedRequest = request.newBuilder()
+                                    .addHeader("Authorization", "Bearer $token")
+                                    .build()
+                                return chain.proceed(authenticatedRequest)
+                            }
+                        }
+                        return chain.proceed(request)
+                    }
+                })
+            }
+            .build()
+        Coil.setImageLoader(imageLoader)
 
         fun updateDriveService(account: GoogleSignInAccount?) {
             if (account != null) {
@@ -93,7 +126,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SonarkTheme {
-                val viewModel: MainViewModel = viewModel { MainViewModel(repository, settingsRepository) }
+                val viewModel: MainViewModel = viewModel { MainViewModel(repository) }
                 val playbackViewModel: PlaybackViewModel = viewModel { PlaybackViewModel(application) }
                 val settingsViewModel: SettingsViewModel = viewModel { SettingsViewModel(settingsRepository) }
                 
@@ -204,14 +237,26 @@ class MainActivity : ComponentActivity() {
                                     sortOrder = sortOrder,
                                     onSortOrderChange = { viewModel.setSortOrder(it) },
                                     onAlbumClick = { album ->
-                                        playbackViewModel.playQueue(album.songs, 0)
-                                        navigator.navigate(PlayerKey)
-                                    },
-                                    onSongClick = { song ->
-                                        playbackViewModel.playQueue(songs, songs.indexOf(song))
-                                        navigator.navigate(PlayerKey)
+                                        navigator.navigate(AlbumKey(album.title))
                                     },
                                     onRefresh = { viewModel.loadSongs() }
+                                )
+                            }
+                            entry<AlbumKey> { key ->
+                                val currentSongs = songs
+                                val albumSongs = remember(key, currentSongs) { 
+                                    viewModel.getSongsForAlbum(key.albumTitle) 
+                                }
+                                AlbumScreen(
+                                    albumTitle = key.albumTitle,
+                                    songs = albumSongs,
+                                    onSongClick = { song ->
+                                        playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
+                                        navigator.navigate(PlayerKey)
+                                    },
+                                    onBackClick = { navigator.goBack() },
+                                    onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
+                                    onDownloadSongs = { viewModel.downloadSongs(it) }
                                 )
                             }
                             entry<PlayerKey> {

@@ -7,6 +7,9 @@ import androidx.navigation3.runtime.NavKey
 data object LibraryKey : NavKey
 
 @Serializable
+data class AlbumKey(val albumTitle: String) : NavKey
+
+@Serializable
 data object PlayerKey : NavKey
 
 @Serializable

@@ -11,7 +11,8 @@ data class Song(
     val duration: Long,
     val data: String, // Drive File ID or Download URL
     val albumId: String,
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    val localPath: String? = null
 )
 
 data class Album(

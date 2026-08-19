@@ -1,32 +1,57 @@
 package md.oak.sonark.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import md.oak.sonark.data.model.Album
-import md.oak.sonark.data.model.Song
 import md.oak.sonark.ui.SortOrder
 import md.oak.sonark.ui.UIState
-import androidx.compose.ui.tooling.preview.Preview
 import md.oak.sonark.ui.theme.SonarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,19 +64,19 @@ fun LibraryScreen(
     sortOrder: SortOrder,
     onSortOrderChange: (SortOrder) -> Unit,
     onAlbumClick: (Album) -> Unit,
-    onSongClick: (Song) -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.screenWidthDp > 600
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Library") },
                 actions = {
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
                     IconButton(onClick = { showSortMenu = true }) {
                         Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
                     }
@@ -143,61 +168,15 @@ fun LibraryScreen(
                                 modifier = Modifier.align(Alignment.Center)
                             )
                         } else {
-                            if (isTablet) {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Adaptive(minSize = 180.dp),
-                                    contentPadding = PaddingValues(16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    items(albums) { album ->
-                                        LibraryGridItem(album = album, onClick = { onAlbumClick(album) })
-                                    }
-                                }
-                            } else {
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    albums.forEach { album ->
-                                        item {
-                                            Text(
-                                                text = album.title,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(16.dp)
-                                            )
-                                        }
-                                        items(album.songs) { song ->
-                                            ListItem(
-                                                headlineContent = { Text(song.title) },
-                                                supportingContent = { Text(song.artist) },
-                                                leadingContent = {
-                                                    Surface(
-                                                        modifier = Modifier.size(48.dp),
-                                                        shape = MaterialTheme.shapes.small,
-                                                        color = MaterialTheme.colorScheme.surfaceVariant
-                                                    ) {
-                                                        if (song.imageUrl != null) {
-                                                            AsyncImage(
-                                                                model = song.imageUrl,
-                                                                contentDescription = null,
-                                                                modifier = Modifier.fillMaxSize()
-                                                            )
-                                                        } else {
-                                                            Box(contentAlignment = Alignment.Center) {
-                                                                Text(
-                                                                    text = song.title.firstOrNull()?.uppercase() ?: "?",
-                                                                    style = MaterialTheme.typography.titleMedium
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                },
-                                                modifier = Modifier.clickable { onSongClick(song) }
-                                            )
-                                        }
-                                    }
+                            LazyVerticalGrid(
+                                columns = GridCells.Adaptive(minSize = 160.dp),
+                                contentPadding = PaddingValues(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                items(albums) { album ->
+                                    LibraryGridItem(album = album, onClick = { onAlbumClick(album) })
                                 }
                             }
                         }
@@ -270,20 +249,24 @@ fun LibraryGridItem(album: Album, onClick: () -> Unit) {
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
-                if (album.imageUrl != null) {
-                    AsyncImage(
-                        model = album.imageUrl,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = album.title.firstOrNull()?.uppercase() ?: "?",
-                            style = MaterialTheme.typography.displaySmall
-                        )
+                SubcomposeAsyncImage(
+                    model = album.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    loading = {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        }
+                    },
+                    error = {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = album.title.firstOrNull()?.uppercase() ?: "?",
+                                style = MaterialTheme.typography.displaySmall
+                            )
+                        }
                     }
-                }
+                )
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -313,7 +296,6 @@ fun LibraryScreenLoadingPreview() {
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
             onAlbumClick = {},
-            onSongClick = {},
             onRefresh = {}
         )
     }
@@ -331,7 +313,6 @@ fun LibraryScreenEmptyPreview() {
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
             onAlbumClick = {},
-            onSongClick = {},
             onRefresh = {}
         )
     }
@@ -349,7 +330,6 @@ fun LibraryScreenUnauthenticatedPreview() {
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
             onAlbumClick = {},
-            onSongClick = {},
             onRefresh = {}
         )
     }

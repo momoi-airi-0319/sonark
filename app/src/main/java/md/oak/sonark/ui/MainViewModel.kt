@@ -7,7 +7,6 @@ import kotlinx.coroutines.launch
 import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.Song
 import md.oak.sonark.data.repository.MusicRepository
-import md.oak.sonark.data.repository.SettingsRepository
 
 enum class SortOrder {
     TITLE, ARTIST
@@ -18,12 +17,9 @@ enum class UIState {
 }
 
 class MainViewModel(
-    private val repository: MusicRepository,
-    private val settingsRepository: SettingsRepository
+    private val repository: MusicRepository
 ) : ViewModel() {
 
-    private val _allSongs = MutableStateFlow<List<Song>>(emptyList())
-    
     private val _uiState = MutableStateFlow(UIState.LOADING)
     val uiState: StateFlow<UIState> = _uiState.asStateFlow()
 
@@ -33,27 +29,31 @@ class MainViewModel(
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
 
-    val songs: StateFlow<List<Song>> = combine(_allSongs, _searchQuery, _sortOrder) { songs, query, sort ->
-        songs.filter { 
-            it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true) || it.album.contains(query, ignoreCase = true)
-        }.sortedBy { 
-            if (sort == SortOrder.TITLE) it.title.lowercase() else it.artist.lowercase()
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val songs: StateFlow<List<Song>> = repository.getSongsFlow()
+        .combine(_searchQuery) { songs, query ->
+            songs.filter { 
+                it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true) || it.album.contains(query, ignoreCase = true)
+            }
+        }.combine(_sortOrder) { songs, sort ->
+            songs.sortedBy { 
+                if (sort == SortOrder.TITLE) it.title.lowercase() else it.artist.lowercase()
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val albums: StateFlow<List<Album>> = songs.map { songList ->
         songList.groupBy { it.album }.map { (albumTitle, albumSongs) ->
             Album(
                 title = albumTitle,
-                artist = albumSongs.firstOrNull()?.artist ?: "Unknown Artist",
-                imageUrl = albumSongs.firstOrNull()?.imageUrl,
+                artist = albumSongs.firstOrNull { it.artist != "Unknown Artist" }?.artist 
+                    ?: albumSongs.firstOrNull()?.artist 
+                    ?: "Unknown Artist",
+                imageUrl = albumSongs.firstOrNull { it.imageUrl != null }?.imageUrl,
                 songs = albumSongs
             )
-        }
+        }.sortedBy { it.title.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedSong = MutableStateFlow<Song?>(null)
-    val selectedSong: StateFlow<Song?> = _selectedSong
 
     init {
         loadSongs()
@@ -68,10 +68,9 @@ class MainViewModel(
             
             _uiState.value = UIState.LOADING
             try {
-                val songs = repository.getDriveSongs()
-                _allSongs.value = songs
-                _uiState.value = if (songs.isEmpty()) UIState.EMPTY else UIState.SUCCESS
-            } catch (e: Exception) {
+                repository.syncWithDrive()
+                _uiState.value = UIState.SUCCESS
+            } catch (_: Exception) {
                 _uiState.value = UIState.ERROR
             }
         }
@@ -79,7 +78,6 @@ class MainViewModel(
 
     fun setUnauthenticated() {
         _uiState.value = UIState.UNAUTHENTICATED
-        _allSongs.value = emptyList()
     }
 
     fun setSearchQuery(query: String) {
@@ -90,7 +88,36 @@ class MainViewModel(
         _sortOrder.value = order
     }
 
-    fun selectSong(song: Song) {
-        _selectedSong.value = song
+    fun getSongsForAlbum(albumTitle: String): List<Song> {
+        return songs.value.filter { it.album == albumTitle }
+    }
+
+    private val _processingMetadataIds = MutableStateFlow<Set<String>>(emptySet())
+
+    fun fetchMetadataForSongs(songsToProcess: List<Song>) {
+        viewModelScope.launch {
+            val idsToProcess = songsToProcess
+                .filter { it.localPath != null && it.artist == "Unknown Artist" }
+                .map { it.id }
+                .filter { it !in _processingMetadataIds.value }
+
+            if (idsToProcess.isEmpty()) return@launch
+
+            _processingMetadataIds.update { it + idsToProcess }
+
+            idsToProcess.forEach { id ->
+                repository.fetchMetadata(id)
+            }
+        }
+    }
+
+    fun downloadSongs(songs: List<Song>) {
+        viewModelScope.launch {
+            songs.forEach { song ->
+                if (song.localPath == null) {
+                    repository.downloadSong(song)
+                }
+            }
+        }
     }
 }
