@@ -53,8 +53,6 @@ class MainViewModel(
         }.sortedBy { it.title.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _selectedSong = MutableStateFlow<Song?>(null)
-
     init {
         loadSongs()
     }
