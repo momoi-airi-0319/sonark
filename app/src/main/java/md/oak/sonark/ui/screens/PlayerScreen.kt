@@ -34,7 +34,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -52,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import md.oak.sonark.data.model.Song
+import md.oak.sonark.ui.components.WavySlider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,9 +156,10 @@ fun PlayerScreen(
 
                 // Progress Bar
                 Column {
-                    Slider(
+                    WavySlider(
                         value = if (duration > 0) progress.toFloat() / duration.toFloat() else 0f,
                         onValueChange = { onSeekTo((it * duration).toLong()) },
+                        isPlaying = isPlaying,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(
