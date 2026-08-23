@@ -42,9 +42,14 @@ class MusicRepository(context: Context, private val songDao: SongDao) {
                 val coverFile = files.find { it.name.equals("cover.jpg", ignoreCase = true) }
                 val imageUrl = coverFile?.let { "https://www.googleapis.com/drive/v3/files/${it.id}?alt=media" }
 
-                for (file in files) {
-                    if (isAudioFile(file)) {
-                        driveSongs.add(parseSong(file, albumFolder.name, imageUrl))
+                val cueFile = files.find { it.name.endsWith(".cue", ignoreCase = true) }
+                if (cueFile != null) {
+                    driveSongs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl))
+                } else {
+                    for (file in files) {
+                        if (isAudioFile(file)) {
+                            driveSongs.add(parseSong(file, albumFolder.name, imageUrl))
+                        }
                     }
                 }
             }
@@ -90,7 +95,84 @@ class MusicRepository(context: Context, private val songDao: SongDao) {
 
     private fun isAudioFile(file: File): Boolean {
         val name = file.name.lowercase()
-        return name.endsWith(".mp3") || name.endsWith(".flac") || name.endsWith(".wav") || name.endsWith(".m4a")
+        return name.endsWith(".mp3") || name.endsWith(".flac") || name.endsWith(".wav") || name.endsWith(".m4a") || name.endsWith(".cue")
+    }
+
+    private suspend fun parseCueAlbum(
+        service: Drive,
+        cueFile: File,
+        allFiles: List<File>,
+        albumName: String,
+        imageUrl: String?
+    ): List<Song> = withContext(Dispatchers.IO) {
+        val songs = mutableListOf<Song>()
+        try {
+            val content = service.files().get(cueFile.id).executeMediaAsInputStream().bufferedReader().use { it.readText() }
+            var currentAudioFile: File? = null
+            var albumArtist = "Unknown Artist"
+            var currentTrackTitle = ""
+            var currentTrackArtist = ""
+            var currentTrackNumber = ""
+            
+            content.lines().forEach { line ->
+                val trimmed = line.trim()
+                when {
+                    trimmed.startsWith("FILE") -> {
+                        val fileName = trimmed.substringAfter("\"").substringBeforeLast("\"")
+                        currentAudioFile = allFiles.find { it.name.equals(fileName, ignoreCase = true) }
+                    }
+                    trimmed.startsWith("PERFORMER") && currentTrackNumber.isEmpty() -> {
+                        albumArtist = trimmed.substringAfter("\"").substringBeforeLast("\"")
+                    }
+                    trimmed.startsWith("TRACK") -> {
+                        currentTrackNumber = trimmed.substringAfter("TRACK ").substringBefore(" ").trim()
+                        currentTrackArtist = albumArtist
+                    }
+                    trimmed.startsWith("TITLE") -> {
+                        if (currentTrackNumber.isNotEmpty()) {
+                            currentTrackTitle = trimmed.substringAfter("\"").substringBeforeLast("\"")
+                        }
+                    }
+                    trimmed.startsWith("PERFORMER") && currentTrackNumber.isNotEmpty() -> {
+                        currentTrackArtist = trimmed.substringAfter("\"").substringBeforeLast("\"")
+                    }
+                    trimmed.startsWith("INDEX 01") -> {
+                        val timeStr = trimmed.substringAfter("INDEX 01 ").trim()
+                        val offsetMs = parseCueTime(timeStr)
+                        val audioFile = currentAudioFile ?: return@forEach
+                        
+                        songs.add(Song(
+                            id = "${cueFile.id}_$currentTrackNumber",
+                            title = currentTrackTitle,
+                            artist = currentTrackArtist,
+                            album = albumName,
+                            duration = 0,
+                            data = "https://www.googleapis.com/drive/v3/files/${audioFile.id}?alt=media",
+                            albumId = cueFile.id,
+                            imageUrl = imageUrl,
+                            localPath = getLocalPath(audioFile.id),
+                            isCueAlbum = true,
+                            startOffset = offsetMs
+                        ))
+                        
+                        currentTrackTitle = ""
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        songs
+    }
+
+    private fun parseCueTime(timeStr: String): Long {
+        // Format: MM:SS:FF
+        val parts = timeStr.split(":")
+        if (parts.size != 3) return 0L
+        val minutes = parts[0].toLongOrNull() ?: 0L
+        val seconds = parts[1].toLongOrNull() ?: 0L
+        val frames = parts[2].toLongOrNull() ?: 0L
+        return (minutes * 60 * 1000) + (seconds * 1000) + (frames * 1000 / 75)
     }
 
     private fun parseSong(file: File, albumName: String, imageUrl: String?): Song {
@@ -122,17 +204,22 @@ class MusicRepository(context: Context, private val songDao: SongDao) {
 
     suspend fun downloadSong(song: Song): String? = withContext(Dispatchers.IO) {
         val service = driveService ?: return@withContext null
-        val localFile = java.io.File(cacheDir, song.id)
+        
+        // Extract real file ID from data URL
+        val fileId = song.data.substringAfter("files/").substringBefore("?")
+        val localFile = java.io.File(cacheDir, fileId)
+        
         if (localFile.exists()) return@withContext localFile.absolutePath
 
         try {
             val outputStream = FileOutputStream(localFile)
-            service.files().get(song.id).executeMediaAndDownloadTo(outputStream)
+            service.files().get(fileId).executeMediaAndDownloadTo(outputStream)
             outputStream.close()
             val path = localFile.absolutePath
             
-            // Update database
-            songDao.getSongById(song.id)?.let { entity ->
+            // Update database for all songs using this file
+            val entitiesToUpdate = songDao.getAllSongs().filter { it.data.contains(fileId) }
+            for (entity in entitiesToUpdate) {
                 songDao.updateSong(entity.copy(localPath = path))
             }
             

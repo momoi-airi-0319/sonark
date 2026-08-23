@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -113,7 +114,7 @@ fun PlayerScreen(
                     modifier = Modifier
                         .size(300.dp)
                         .aspectRatio(1f)
-                        .clip(MaterialTheme.shapes.extraLarge),
+                        .clip(if (song.isCueAlbum) CircleShape else MaterialTheme.shapes.extraLarge),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     if (song.imageUrl != null) {

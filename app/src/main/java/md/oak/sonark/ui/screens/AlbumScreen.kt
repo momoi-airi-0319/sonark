@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
@@ -103,7 +104,7 @@ private fun AlbumHeader(song: Song?) {
     ) {
         Surface(
             modifier = Modifier.size(200.dp),
-            shape = MaterialTheme.shapes.medium,
+            shape = if (song?.isCueAlbum == true) CircleShape else MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
             SubcomposeAsyncImage(

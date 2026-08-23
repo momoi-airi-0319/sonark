@@ -48,7 +48,8 @@ class MainViewModel(
                     ?: albumSongs.firstOrNull()?.artist 
                     ?: "Unknown Artist",
                 imageUrl = albumSongs.firstOrNull { it.imageUrl != null }?.imageUrl,
-                songs = albumSongs
+                songs = albumSongs,
+                isCueAlbum = albumSongs.any { it.isCueAlbum }
             )
         }.sortedBy { it.title.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

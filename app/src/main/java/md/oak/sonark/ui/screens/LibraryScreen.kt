@@ -44,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -247,7 +248,7 @@ fun LibraryGridItem(album: Album, onClick: () -> Unit) {
                 modifier = Modifier
                     .aspectRatio(1f)
                     .fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium,
+                shape = if (album.isCueAlbum) CircleShape else MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
                 SubcomposeAsyncImage(

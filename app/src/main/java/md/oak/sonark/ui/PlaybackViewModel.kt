@@ -112,6 +112,11 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             MediaItem.Builder()
                 .setMediaId(song.id)
                 .setUri(uri)
+                .setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder()
+                        .setStartPositionMs(song.startOffset)
+                        .build()
+                )
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(song.title)
