@@ -14,7 +14,8 @@ data class Song(
     val imageUrl: String? = null,
     val localPath: String? = null,
     val isCueAlbum: Boolean = false,
-    val startOffset: Long = 0L
+    val startOffset: Long = 0L,
+    val providerId: String = ""
 )
 
 data class Album(

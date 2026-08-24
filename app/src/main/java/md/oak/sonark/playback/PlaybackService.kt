@@ -14,7 +14,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import md.oak.sonark.data.auth.DriveAuthHolder
+import md.oak.sonark.data.Dependencies
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
@@ -31,16 +31,19 @@ class PlaybackService : MediaSessionService() {
             
             object : DataSource by dataSource {
                 override fun open(dataSpec: DataSpec): Long {
-                    val token = try {
-                        DriveAuthHolder.credential?.getToken()
-                    } catch (e: Exception) {
-                        Log.e("PlaybackService", "Error getting Drive token", e)
-                        null
+                    // In a multi-provider setup, we might need the song ID to know which headers to use.
+                    // But Media3's DataSource doesn't easily give us the MediaItem here.
+                    // For now, we'll try Google Drive headers if the URL matches.
+                    val url = dataSpec.uri.toString()
+                    val headers = if (url.contains("googleapis.com")) {
+                        Dependencies.driveProvider.getAuthHeaders()
+                    } else {
+                        emptyMap()
                     }
                     
-                    val authorizedDataSpec = if (token != null) {
+                    val authorizedDataSpec = if (headers.isNotEmpty()) {
                         dataSpec.buildUpon()
-                            .setHttpRequestHeaders(mapOf("Authorization" to "Bearer $token"))
+                            .setHttpRequestHeaders(headers)
                             .build()
                     } else {
                         dataSpec

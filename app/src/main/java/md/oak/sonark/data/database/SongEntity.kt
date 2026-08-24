@@ -16,7 +16,8 @@ data class SongEntity(
     val imageUrl: String?,
     val localPath: String?,
     val isCueAlbum: Boolean,
-    val startOffset: Long
+    val startOffset: Long,
+    val providerId: String
 ) {
     fun toSong() = Song(
         id = id,
@@ -29,7 +30,8 @@ data class SongEntity(
         imageUrl = imageUrl,
         localPath = localPath,
         isCueAlbum = isCueAlbum,
-        startOffset = startOffset
+        startOffset = startOffset,
+        providerId = providerId
     )
 
     companion object {
@@ -44,7 +46,8 @@ data class SongEntity(
             imageUrl = song.imageUrl,
             localPath = song.localPath,
             isCueAlbum = song.isCueAlbum,
-            startOffset = song.startOffset
+            startOffset = song.startOffset,
+            providerId = song.providerId
         )
     }
 }

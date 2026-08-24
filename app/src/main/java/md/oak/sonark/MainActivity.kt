@@ -40,7 +40,6 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import md.oak.sonark.data.Dependencies
-import md.oak.sonark.data.auth.DriveAuthHolder
 import md.oak.sonark.navigation.AlbumKey
 import md.oak.sonark.navigation.LibraryKey
 import md.oak.sonark.navigation.Navigator
@@ -76,7 +75,7 @@ class MainActivity : ComponentActivity() {
                         if (url.contains("googleapis.com") || url.contains("drive.google.com")) {
                             val token = withContext(Dispatchers.IO) {
                                 try {
-                                    DriveAuthHolder.credential?.getToken()
+                                    Dependencies.driveProvider.credential?.getToken()
                                 } catch (e: Exception) {
                                     null
                                 }
@@ -102,24 +101,14 @@ class MainActivity : ComponentActivity() {
                         this, listOf(DriveScopes.DRIVE_READONLY)
                     ).setSelectedAccount(account.account)
                     
-                    DriveAuthHolder.credential = credential
-                    
-                    val driveService = Drive.Builder(
-                        NetHttpTransport(),
-                        GsonFactory.getDefaultInstance(),
-                        credential
-                    ).setApplicationName("Sonark").build()
-                    
-                    repository.setDriveService(driveService)
+                    Dependencies.driveProvider.credential = credential
                     Log.d("Sonark", "Drive service updated for ${account.email}")
                 } catch (e: Exception) {
                     Log.e("Sonark", "Error updating drive service", e)
-                    DriveAuthHolder.credential = null
-                    repository.setDriveService(null)
+                    Dependencies.driveProvider.credential = null
                 }
             } else {
-                DriveAuthHolder.credential = null
-                repository.setDriveService(null)
+                Dependencies.driveProvider.credential = null
                 Log.d("Sonark", "Drive service cleared")
             }
         }

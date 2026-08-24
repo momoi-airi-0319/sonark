@@ -60,14 +60,9 @@ class MainViewModel(
 
     fun loadSongs() {
         viewModelScope.launch {
-            if (!repository.isServiceSet()) {
-                setUnauthenticated()
-                return@launch
-            }
-            
             _uiState.value = UIState.LOADING
             try {
-                repository.syncWithDrive()
+                repository.syncAll()
                 _uiState.value = UIState.SUCCESS
             } catch (_: Exception) {
                 _uiState.value = UIState.ERROR
