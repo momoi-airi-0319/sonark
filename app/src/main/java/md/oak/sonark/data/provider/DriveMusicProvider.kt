@@ -8,7 +8,11 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.model.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.data.model.Song
+import md.oak.sonark.data.model.SyncSong
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.FileOutputStream
 import java.io.File as JavaFile
 
@@ -16,6 +20,7 @@ class DriveMusicProvider : MusicProvider {
     override val id: String = "google_drive"
     override val name: String = "Google Drive"
 
+    private val httpClient = OkHttpClient()
     private var driveService: Drive? = null
     var credential: GoogleAccountCredential? = null
         set(value) {
@@ -36,9 +41,9 @@ class DriveMusicProvider : MusicProvider {
         }
     }
 
-    override suspend fun syncLibrary(): List<Song> = withContext(Dispatchers.IO) {
+    override suspend fun syncLibrary(): List<SyncSong> = withContext(Dispatchers.IO) {
         val service = driveService ?: return@withContext emptyList()
-        val songs = mutableListOf<Song>()
+        val songs = mutableListOf<SyncSong>()
         try {
             val vaultFolder = findFolder(service, "Vault", "root") ?: return@withContext emptyList()
             val albumFolders = listFolders(service, vaultFolder.id)
@@ -57,7 +62,7 @@ class DriveMusicProvider : MusicProvider {
                 } else {
                     for (file in files) {
                         if (isAudioFile(file)) {
-                            songs.add(parseSong(file, albumFolder.name, imageUrl))
+                            songs.add(parseSong(file, albumFolder.id, albumFolder.name, imageUrl))
                         }
                     }
                 }
@@ -68,18 +73,53 @@ class DriveMusicProvider : MusicProvider {
         songs
     }
 
-    override suspend fun resolveStreamUri(song: Song): Uri {
+    override suspend fun resolveStreamUri(song: SyncSong): Uri {
         return Uri.parse(song.data)
     }
 
-    override suspend fun downloadSong(song: Song, targetFile: JavaFile): Boolean = withContext(Dispatchers.IO) {
-        val service = driveService ?: return@withContext false
-        val fileId = song.data.substringAfter("files/").substringBefore("?")
-        try {
-            FileOutputStream(targetFile).use { outputStream ->
-                service.files().get(fileId).executeMediaAndDownloadTo(outputStream)
+    override suspend fun downloadSong(
+        song: SyncSong, 
+        targetFile: JavaFile,
+        onProgress: (Long, Long) -> Unit
+    ): Boolean = withContext(Dispatchers.IO) {
+        val headers = getAuthHeaders()
+        val existingSize = if (targetFile.exists()) targetFile.length() else 0L
+        
+        if (existingSize >= song.size && song.size > 0) return@withContext true
+
+        val request = Request.Builder()
+            .url(song.data)
+            .apply {
+                headers.forEach { (k, v) -> addHeader(k, v) }
+                if (existingSize > 0) {
+                    addHeader("Range", "bytes=$existingSize-")
+                }
             }
-            true
+            .build()
+
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful && response.code != 416) return@withContext false
+                
+                if (response.code == 416) return@withContext true 
+
+                val body = response.body ?: return@withContext false
+                val append = response.code == 206
+                
+                FileOutputStream(targetFile, append).use { fos ->
+                    val inputStream = body.byteStream()
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    var totalDownloaded = if (append) existingSize else 0L
+                    
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        fos.write(buffer, 0, bytesRead)
+                        totalDownloaded += bytesRead
+                        onProgress(totalDownloaded, song.size)
+                    }
+                }
+                true
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -121,7 +161,7 @@ class DriveMusicProvider : MusicProvider {
         val query = "'$parentId' in parents and trashed = false"
         val result = service.files().list()
             .setQ(query)
-            .setFields("files(id, name, mimeType, size)")
+            .setFields("files(id, name, mimeType, size, md5Checksum)")
             .execute()
         return result.files ?: emptyList()
     }
@@ -137,8 +177,8 @@ class DriveMusicProvider : MusicProvider {
         allFiles: List<File>,
         albumName: String,
         imageUrl: String?
-    ): List<Song> = withContext(Dispatchers.IO) {
-        val songs = mutableListOf<Song>()
+    ): List<SyncSong> = withContext(Dispatchers.IO) {
+        val songs = mutableListOf<SyncSong>()
         try {
             val content = service.files().get(cueFile.id).executeMediaAsInputStream().bufferedReader().use { it.readText() }
             var currentAudioFile: File? = null
@@ -174,19 +214,24 @@ class DriveMusicProvider : MusicProvider {
                         val offsetMs = parseCueTime(timeStr)
                         val audioFile = currentAudioFile ?: return@forEach
                         
-                        songs.add(Song(
+                        val song = Song(
                             id = "${cueFile.id}_$currentTrackNumber",
                             title = currentTrackTitle,
                             artist = currentTrackArtist,
                             album = albumName,
                             duration = 0,
+                            imageUrl = imageUrl,
+                            type = AlbumType.CUE
+                        )
+                        
+                        songs.add(SyncSong(
+                            song = song,
                             data = "https://www.googleapis.com/drive/v3/files/${audioFile.id}?alt=media",
                             albumId = cueFile.id,
-                            imageUrl = imageUrl,
-                            localPath = null,
-                            isCueAlbum = true,
-                            startOffset = offsetMs,
-                            providerId = id
+                            providerId = id,
+                            size = audioFile.getSize() ?: 0L,
+                            md5Hash = audioFile.md5Checksum,
+                            startOffset = offsetMs
                         ))
                         
                         currentTrackTitle = ""
@@ -208,7 +253,7 @@ class DriveMusicProvider : MusicProvider {
         return (minutes * 60 * 1000) + (seconds * 1000) + (frames * 1000 / 75)
     }
 
-    private fun parseSong(file: File, albumName: String, imageUrl: String?): Song {
+    private fun parseSong(file: File, albumId: String, albumName: String, imageUrl: String?): SyncSong {
         val fileName = file.name.substringBeforeLast(".")
         val title = if (fileName.contains(" - ")) {
             fileName.substringAfter(" - ").trim()
@@ -216,17 +261,23 @@ class DriveMusicProvider : MusicProvider {
             fileName
         }
 
-        return Song(
+        val song = Song(
             id = file.id,
             title = title,
             artist = "Unknown Artist",
             album = albumName,
             duration = 0,
-            data = "https://www.googleapis.com/drive/v3/files/${file.id}?alt=media",
-            albumId = file.id,
             imageUrl = imageUrl,
-            localPath = null,
-            providerId = id
+            type = AlbumType.NORMAL
+        )
+
+        return SyncSong(
+            song = song,
+            data = "https://www.googleapis.com/drive/v3/files/${file.id}?alt=media",
+            albumId = albumId,
+            providerId = id,
+            size = file.getSize() ?: 0L,
+            md5Hash = file.md5Checksum
         )
     }
 }

@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import md.oak.sonark.data.model.Song
+import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.playback.PlaybackService
 import androidx.core.net.toUri
 import kotlin.time.Duration.Companion.milliseconds
@@ -33,8 +33,8 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
-    private val _currentSong = MutableStateFlow<Song?>(null)
-    val currentSong: StateFlow<Song?> = _currentSong.asStateFlow()
+    private val _currentSong = MutableStateFlow<SyncSong?>(null)
+    val currentSong: StateFlow<SyncSong?> = _currentSong.asStateFlow()
 
     private val _playbackProgress = MutableStateFlow(0L)
     val playbackProgress: StateFlow<Long> = _playbackProgress.asStateFlow()
@@ -48,8 +48,8 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
     val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
 
-    private val _queue = MutableStateFlow<List<Song>>(emptyList())
-    val queue: StateFlow<List<Song>> = _queue.asStateFlow()
+    private val _queue = MutableStateFlow<List<SyncSong>>(emptyList())
+    val queue: StateFlow<List<SyncSong>> = _queue.asStateFlow()
 
     private var progressJob: Job? = null
 
@@ -75,7 +75,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val mediaId = mediaItem?.mediaId
-                _currentSong.value = _queue.value.find { it.id == mediaId }
+                _currentSong.value = _queue.value.find { it.song.id == mediaId }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -99,39 +99,45 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         if (controller.isPlaying) startProgressUpdate()
     }
 
-    fun playQueue(songs: List<Song>, startIndex: Int = 0) {
+    fun playQueue(songs: List<SyncSong>, startIndex: Int = 0) {
         val controller = this.controller ?: return
-        _queue.value = songs
         
-        val mediaItems = songs.map { song ->
-            val uri = if (song.localPath != null) {
-                Uri.fromFile(java.io.File(song.localPath))
-            } else {
-                song.data.toUri()
-            }
+        // Only play downloaded songs
+        val playableSongs = songs.filter { it.localPath != null && java.io.File(it.localPath).exists() }
+        if (playableSongs.isEmpty()) return
+
+        val originalStartSong = songs.getOrNull(startIndex)
+        val newStartIndex = if (originalStartSong != null) {
+            playableSongs.indexOfFirst { it.song.id == originalStartSong.song.id }.coerceAtLeast(0)
+        } else 0
+
+        _queue.value = playableSongs
+        
+        val mediaItems = playableSongs.map { syncSong ->
+            val uri = Uri.fromFile(java.io.File(syncSong.localPath!!))
             MediaItem.Builder()
-                .setMediaId(song.id)
+                .setMediaId(syncSong.song.id)
                 .setUri(uri)
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(song.startOffset)
+                        .setStartPositionMs(syncSong.startOffset)
                         .build()
                 )
                 .setMediaMetadata(
                     MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.artist)
-                        .setAlbumTitle(song.album)
-                        .setArtworkUri(song.imageUrl?.toUri())
+                        .setTitle(syncSong.song.title)
+                        .setArtist(syncSong.song.artist)
+                        .setAlbumTitle(syncSong.song.album)
+                        .setArtworkUri(syncSong.song.imageUrl?.toUri())
                         .build()
                 )
                 .build()
         }
 
-        controller.setMediaItems(mediaItems, startIndex, 0L)
+        controller.setMediaItems(mediaItems, newStartIndex, 0L)
         controller.prepare()
         controller.play()
-        _currentSong.value = songs.getOrNull(startIndex)
+        _currentSong.value = playableSongs.getOrNull(newStartIndex)
     }
 
     fun togglePlayback() {

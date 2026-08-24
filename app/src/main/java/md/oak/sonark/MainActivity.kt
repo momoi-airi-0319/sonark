@@ -18,7 +18,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
@@ -50,6 +52,7 @@ import md.oak.sonark.navigation.toEntries
 import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SettingsViewModel
+import md.oak.sonark.ui.components.DownloadQueueBottomSheet
 import md.oak.sonark.ui.screens.AlbumScreen
 import md.oak.sonark.ui.screens.LibraryScreen
 import md.oak.sonark.ui.screens.PlayerScreen
@@ -162,9 +165,17 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val songs by viewModel.songs.collectAsStateWithLifecycle()
+                val albums by viewModel.albums.collectAsStateWithLifecycle()
                 val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
                 val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
+                val downloadQueue by viewModel.downloadQueue.collectAsStateWithLifecycle()
                 
+                val queueSize = remember(downloadQueue) {
+                    downloadQueue.sumOf { it.totalSongs }
+                }
+                
+                var showQueue by remember { mutableStateOf(false) }
+
                 val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
                 val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
                 val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
@@ -217,10 +228,10 @@ class MainActivity : ComponentActivity() {
                         entryProvider {
                             entry<LibraryKey> {
                                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-                                val albums by viewModel.albums.collectAsStateWithLifecycle()
                                 LibraryScreen(
                                     uiState = uiState,
                                     albums = albums,
+                                    downloadQueueSize = queueSize,
                                     searchQuery = searchQuery,
                                     onSearchQueryChange = { viewModel.setSearchQuery(it) },
                                     sortOrder = sortOrder,
@@ -228,25 +239,31 @@ class MainActivity : ComponentActivity() {
                                     onAlbumClick = { album ->
                                         navigator.navigate(AlbumKey(album.title))
                                     },
-                                    onRefresh = { viewModel.loadSongs() }
+                                    onRefresh = { viewModel.loadSongs() },
+                                    onQueueClick = { showQueue = true }
                                 )
                             }
                             entry<AlbumKey> { key ->
                                 val currentSongs = songs
+                                val album = remember(key, albums) {
+                                    albums.find { it.title == key.albumTitle }
+                                }
                                 val albumSongs = remember(key, currentSongs) { 
                                     viewModel.getSongsForAlbum(key.albumTitle) 
                                 }
-                                AlbumScreen(
-                                    albumTitle = key.albumTitle,
-                                    songs = albumSongs,
-                                    onSongClick = { song ->
-                                        playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
-                                        navigator.navigate(PlayerKey)
-                                    },
-                                    onBackClick = { navigator.goBack() },
-                                    onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
-                                    onDownloadSongs = { viewModel.downloadSongs(it) }
-                                )
+                                if (album != null) {
+                                    AlbumScreen(
+                                        album = album,
+                                        songs = albumSongs,
+                                        onSongClick = { song ->
+                                            playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
+                                            navigator.navigate(PlayerKey)
+                                        },
+                                        onBackClick = { navigator.goBack() },
+                                        onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
+                                        onDownloadSongs = { viewModel.downloadSongs(it) }
+                                    )
+                                }
                             }
                             entry<PlayerKey> {
                                 PlayerScreen(
@@ -292,6 +309,13 @@ class MainActivity : ComponentActivity() {
                         entries = navigationState.toEntries(entryProvider),
                         onBack = { navigator.goBack() }
                     )
+
+                    if (showQueue) {
+                        DownloadQueueBottomSheet(
+                            queue = downloadQueue,
+                            onDismissRequest = { showQueue = false }
+                        )
+                    }
                 }
             }
         }

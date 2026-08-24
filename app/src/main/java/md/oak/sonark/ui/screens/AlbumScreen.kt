@@ -1,49 +1,34 @@
 package md.oak.sonark.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import coil.compose.SubcomposeAsyncImage
-import md.oak.sonark.data.model.Song
+import md.oak.sonark.data.model.Album
+import md.oak.sonark.data.model.DownloadStatus
+import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.ui.model.AlbumUiItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumScreen(
-    albumTitle: String,
-    songs: List<Song>,
-    onSongClick: (Song) -> Unit,
+    album: Album,
+    songs: List<SyncSong>,
+    onSongClick: (SyncSong) -> Unit,
     onBackClick: () -> Unit,
-    onLoadMetadata: (List<Song>) -> Unit,
-    onDownloadSongs: (List<Song>) -> Unit,
+    onLoadMetadata: (List<SyncSong>) -> Unit,
+    onDownloadSongs: (List<SyncSong>) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LaunchedEffect(songs) {
@@ -51,7 +36,7 @@ fun AlbumScreen(
     }
 
     val songsToLoadMetadata = remember(songs) { 
-        songs.filter { it.localPath != null && it.artist == "Unknown Artist" } 
+        songs.filter { it.localPath != null && it.song.artist == "Unknown Artist" } 
     }
     LaunchedEffect(songsToLoadMetadata) {
         if (songsToLoadMetadata.isNotEmpty()) {
@@ -62,7 +47,7 @@ fun AlbumScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(albumTitle) },
+                title = { Text(album.title) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -76,67 +61,44 @@ fun AlbumScreen(
             modifier = Modifier.padding(padding).fillMaxSize()
         ) {
             item {
-                AlbumHeader(songs.firstOrNull())
+                val uiItem = remember(album) { AlbumUiItem.from(album) }
+                uiItem.Header()
             }
-            items(songs) { song ->
+            items(songs) { syncSong ->
+                val song = syncSong.song
+                val isDownloaded = syncSong.localPath != null
                 ListItem(
-                    headlineContent = { Text(song.title) },
-                    supportingContent = { Text(song.artist) },
-                    leadingContent = {
-                        if (song.localPath != null) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = "Cached")
+                    headlineContent = { 
+                        Text(
+                            text = song.title,
+                            color = if (isDownloaded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        ) 
+                    },
+                    supportingContent = { 
+                        Column {
+                            Text(
+                                text = song.artist,
+                                color = if (isDownloaded) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            if (syncSong.downloadStatus == DownloadStatus.DOWNLOADING) {
+                                LinearProgressIndicator(
+                                    progress = { syncSong.downloadProgress / 100f },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                )
+                            }
                         }
                     },
-                    modifier = Modifier.clickable { onSongClick(song) }
+                    leadingContent = {
+                        when (syncSong.downloadStatus) {
+                            DownloadStatus.COMPLETED -> Icon(Icons.Default.CheckCircle, contentDescription = "Downloaded", tint = MaterialTheme.colorScheme.primary)
+                            DownloadStatus.DOWNLOADING -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            DownloadStatus.ERROR -> Icon(Icons.Default.Error, contentDescription = "Error", tint = MaterialTheme.colorScheme.error)
+                            else -> Icon(Icons.Default.CloudDownload, contentDescription = "Not Downloaded", tint = MaterialTheme.colorScheme.outline)
+                        }
+                    },
+                    modifier = Modifier.clickable(enabled = isDownloaded) { onSongClick(syncSong) }
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun AlbumHeader(song: Song?) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Surface(
-            modifier = Modifier.size(200.dp),
-            shape = if (song?.isCueAlbum == true) CircleShape else MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
-            SubcomposeAsyncImage(
-                model = song?.imageUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                loading = {
-                    Box(contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                },
-                error = {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = song?.album?.firstOrNull()?.uppercase() ?: "?",
-                            style = MaterialTheme.typography.displayLarge
-                        )
-                    }
-                }
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = song?.album ?: "Unknown Album",
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = song?.artist ?: "Unknown Artist",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.secondary,
-            textAlign = TextAlign.Center
-        )
     }
 }

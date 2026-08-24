@@ -51,19 +51,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
-import md.oak.sonark.data.model.Song
+import md.oak.sonark.data.model.AlbumType
+import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.components.WavySlider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
-    song: Song?,
+    song: SyncSong?,
     isPlaying: Boolean,
     progress: Long,
     duration: Long,
     shuffleEnabled: Boolean,
     repeatMode: Int,
-    queue: List<Song>,
+    queue: List<SyncSong>,
     onTogglePlayback: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSkipNext: () -> Unit,
@@ -107,6 +108,7 @@ fun PlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (song != null) {
+                val metadata = song.song
                 Spacer(modifier = Modifier.weight(1f))
 
                 // Album Art
@@ -114,12 +116,12 @@ fun PlayerScreen(
                     modifier = Modifier
                         .size(300.dp)
                         .aspectRatio(1f)
-                        .clip(if (song.isCueAlbum) CircleShape else MaterialTheme.shapes.extraLarge),
+                        .clip(if (metadata.type == AlbumType.CUE) CircleShape else MaterialTheme.shapes.extraLarge),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    if (song.imageUrl != null) {
+                    if (metadata.imageUrl != null) {
                         AsyncImage(
-                            model = song.imageUrl,
+                            model = metadata.imageUrl,
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -140,13 +142,13 @@ fun PlayerScreen(
                 // Song Info
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = song.title,
+                        text = metadata.title,
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1
                     )
                     Text(
-                        text = song.artist,
+                        text = metadata.artist,
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.secondary,
                         maxLines = 1
@@ -265,20 +267,21 @@ fun PlayerScreen(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
                 LazyColumn(modifier = Modifier.fillMaxHeight(0.6f)) {
-                    items(queue) { queuedSong ->
+                    items(queue) { queuedSyncSong ->
+                        val queuedSong = queuedSyncSong.song
                         ListItem(
                             headlineContent = { 
                                 Text(
                                     queuedSong.title,
-                                    fontWeight = if (queuedSong == song) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (queuedSyncSong == song) FontWeight.Bold else FontWeight.Normal
                                 ) 
                             },
                             supportingContent = { Text(queuedSong.artist) },
                             leadingContent = {
                                 Icon(
-                                    imageVector = if (queuedSong == song) Icons.Rounded.PlayArrow else Icons.Rounded.MusicNote,
+                                    imageVector = if (queuedSyncSong == song) Icons.Rounded.PlayArrow else Icons.Rounded.MusicNote,
                                     contentDescription = null,
-                                    tint = if (queuedSong == song) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                    tint = if (queuedSyncSong == song) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                                 )
                             },
                             modifier = Modifier.clickable { /* Could implement play from queue here */ }

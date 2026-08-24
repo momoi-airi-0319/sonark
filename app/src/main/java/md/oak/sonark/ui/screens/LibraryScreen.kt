@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -54,6 +55,7 @@ import coil.compose.SubcomposeAsyncImage
 import md.oak.sonark.data.model.Album
 import md.oak.sonark.ui.SortOrder
 import md.oak.sonark.ui.UIState
+import md.oak.sonark.ui.model.AlbumUiItem
 import md.oak.sonark.ui.theme.SonarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,12 +63,14 @@ import md.oak.sonark.ui.theme.SonarkTheme
 fun LibraryScreen(
     uiState: UIState,
     albums: List<Album>,
+    downloadQueueSize: Int,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     sortOrder: SortOrder,
     onSortOrderChange: (SortOrder) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onRefresh: () -> Unit,
+    onQueueClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
@@ -76,6 +80,22 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text("Library") },
                 actions = {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (downloadQueueSize > 0) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(32.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(onClick = onQueueClick) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = "Queue",
+                                tint = if (downloadQueueSize > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
@@ -178,7 +198,8 @@ fun LibraryScreen(
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 items(albums) { album ->
-                                    LibraryGridItem(album = album, onClick = { onAlbumClick(album) })
+                                    val uiItem = remember(album) { AlbumUiItem.from(album) }
+                                    uiItem.GridItem(onClick = { onAlbumClick(album) })
                                 }
                             }
                         }
@@ -235,60 +256,6 @@ private fun EmptyState(
     }
 }
 
-@Composable
-fun LibraryGridItem(album: Album, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Surface(
-                modifier = Modifier
-                    .aspectRatio(1f)
-                    .fillMaxWidth(),
-                shape = if (album.isCueAlbum) CircleShape else MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                SubcomposeAsyncImage(
-                    model = album.imageUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    loading = {
-                        Box(contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        }
-                    },
-                    error = {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = album.title.firstOrNull()?.uppercase() ?: "?",
-                                style = MaterialTheme.typography.displaySmall
-                            )
-                        }
-                    }
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = album.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                minLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = album.artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
 @Preview(showBackground = true, device = "spec:width=411dp,height=891dp")
 @Composable
 fun LibraryScreenLoadingPreview() {
@@ -296,12 +263,14 @@ fun LibraryScreenLoadingPreview() {
         LibraryScreen(
             uiState = UIState.LOADING,
             albums = emptyList(),
+            downloadQueueSize = 0,
             searchQuery = "",
             onSearchQueryChange = {},
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
             onAlbumClick = {},
-            onRefresh = {}
+            onRefresh = {},
+            onQueueClick = {}
         )
     }
 }
@@ -313,12 +282,14 @@ fun LibraryScreenEmptyPreview() {
         LibraryScreen(
             uiState = UIState.EMPTY,
             albums = emptyList(),
+            downloadQueueSize = 0,
             searchQuery = "",
             onSearchQueryChange = {},
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
             onAlbumClick = {},
-            onRefresh = {}
+            onRefresh = {},
+            onQueueClick = {}
         )
     }
 }
@@ -330,12 +301,14 @@ fun LibraryScreenUnauthenticatedPreview() {
         LibraryScreen(
             uiState = UIState.UNAUTHENTICATED,
             albums = emptyList(),
+            downloadQueueSize = 0,
             searchQuery = "",
             onSearchQueryChange = {},
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
             onAlbumClick = {},
-            onRefresh = {}
+            onRefresh = {},
+            onQueueClick = {}
         )
     }
 }

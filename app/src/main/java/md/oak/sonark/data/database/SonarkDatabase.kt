@@ -4,10 +4,17 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
-@Database(entities = [SongEntity::class], version = 3, exportSchema = false)
+@Database(
+    entities = [SongEntity::class, AlbumEntity::class],
+    version = 5,
+    exportSchema = false
+)
+@TypeConverters(Converters::class)
 abstract class SonarkDatabase : RoomDatabase() {
     abstract fun songDao(): SongDao
+    abstract fun albumDao(): AlbumDao
 
     companion object {
         @Volatile

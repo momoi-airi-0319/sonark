@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import md.oak.sonark.data.model.Album
-import md.oak.sonark.data.model.Song
+import md.oak.sonark.data.model.AlbumType
+import md.oak.sonark.data.model.DownloadStatus
+import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.repository.MusicRepository
+import md.oak.sonark.ui.model.AlbumDownloadItem
 
 enum class SortOrder {
     TITLE, ARTIST
@@ -29,43 +32,105 @@ class MainViewModel(
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
 
-    val songs: StateFlow<List<Song>> = repository.getSongsFlow()
+    val songs: StateFlow<List<SyncSong>> = repository.getSyncSongsFlow()
         .combine(_searchQuery) { songs, query ->
             songs.filter { 
-                it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true) || it.album.contains(query, ignoreCase = true)
+                it.song.title.contains(query, ignoreCase = true) || 
+                it.song.artist.contains(query, ignoreCase = true) || 
+                it.song.album.contains(query, ignoreCase = true)
             }
         }.combine(_sortOrder) { songs, sort ->
             songs.sortedBy { 
-                if (sort == SortOrder.TITLE) it.title.lowercase() else it.artist.lowercase()
+                if (sort == SortOrder.TITLE) it.song.title.lowercase() else it.song.artist.lowercase()
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val albums: StateFlow<List<Album>> = songs.map { songList ->
-        songList.groupBy { it.album }.map { (albumTitle, albumSongs) ->
-            Album(
-                title = albumTitle,
-                artist = albumSongs.firstOrNull { it.artist != "Unknown Artist" }?.artist 
-                    ?: albumSongs.firstOrNull()?.artist 
-                    ?: "Unknown Artist",
-                imageUrl = albumSongs.firstOrNull { it.imageUrl != null }?.imageUrl,
-                songs = albumSongs,
-                isCueAlbum = albumSongs.any { it.isCueAlbum }
-            )
-        }.sortedBy { it.title.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val albums: StateFlow<List<Album>> = repository.getAlbumsFlow()
+        .combine(_searchQuery) { albums, query ->
+            albums.filter { 
+                it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true)
+            }.sortedBy { it.title.lowercase() }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val downloadQueue: StateFlow<List<AlbumDownloadItem>> = songs
+        .map { allSyncSongs ->
+            allSyncSongs.groupBy { it.albumId }.mapNotNull { (albumId, albumSyncSongs) ->
+                val activeSyncSongs = albumSyncSongs.filter { 
+                    it.downloadStatus != DownloadStatus.COMPLETED && it.downloadStatus != DownloadStatus.NONE 
+                }
+                if (activeSyncSongs.isEmpty()) return@mapNotNull null
+                
+                val first = albumSyncSongs.first()
+                
+                // Group by file (data URL) to calculate real progress based on all files in the album
+                val uniqueFiles = albumSyncSongs.groupBy { it.data }.values.map { it.first() }
+                val totalProgress = if (uniqueFiles.isNotEmpty()) {
+                    val completedSum = uniqueFiles.sumOf { 
+                        if (it.downloadStatus == DownloadStatus.COMPLETED) 100 else it.downloadProgress 
+                    }
+                    completedSum.toFloat() / (uniqueFiles.size * 100f)
+                } else 0f
+
+                val downloading = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.DOWNLOADING }
+                val uniqueDownloading = downloading.distinctBy { it.data }
+                
+                val pending = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.PENDING }
+                val error = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.ERROR }
+
+                if (first.song.type == AlbumType.CUE) {
+                    AlbumDownloadItem.Cue(
+                        albumId = albumId,
+                        title = first.song.album,
+                        artist = first.song.artist,
+                        imageUrl = first.song.imageUrl,
+                        progress = totalProgress,
+                        totalSongs = albumSyncSongs.size,
+                        downloadingSongs = uniqueDownloading,
+                        pendingSongsCount = pending.size,
+                        errorSongsCount = error.size,
+                        isDownloading = downloading.isNotEmpty()
+                    )
+                } else {
+                    AlbumDownloadItem.Normal(
+                        albumId = albumId,
+                        title = first.song.album,
+                        artist = first.song.artist,
+                        imageUrl = first.song.imageUrl,
+                        progress = totalProgress,
+                        totalSongs = albumSyncSongs.size,
+                        downloadingSongs = uniqueDownloading,
+                        pendingSongsCount = pending.size,
+                        errorSongsCount = error.size,
+                        isDownloading = downloading.isNotEmpty()
+                    )
+                }
+            }.sortedByDescending { it.isDownloading }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         loadSongs()
+        viewModelScope.launch {
+            albums.collect { 
+                if (it.isNotEmpty() && (_uiState.value == UIState.LOADING || _uiState.value == UIState.EMPTY)) {
+                    _uiState.value = UIState.SUCCESS
+                }
+            }
+        }
     }
 
     fun loadSongs() {
         viewModelScope.launch {
-            _uiState.value = UIState.LOADING
+            if (albums.value.isEmpty()) {
+                _uiState.value = UIState.LOADING
+            }
             try {
                 repository.syncAll()
                 _uiState.value = UIState.SUCCESS
             } catch (_: Exception) {
-                _uiState.value = UIState.ERROR
+                if (albums.value.isEmpty()) {
+                    _uiState.value = UIState.ERROR
+                }
             }
         }
     }
@@ -82,17 +147,17 @@ class MainViewModel(
         _sortOrder.value = order
     }
 
-    fun getSongsForAlbum(albumTitle: String): List<Song> {
-        return songs.value.filter { it.album == albumTitle }
+    fun getSongsForAlbum(albumTitle: String): List<SyncSong> {
+        return songs.value.filter { it.song.album == albumTitle }
     }
 
     private val _processingMetadataIds = MutableStateFlow<Set<String>>(emptySet())
 
-    fun fetchMetadataForSongs(songsToProcess: List<Song>) {
+    fun fetchMetadataForSongs(songsToProcess: List<SyncSong>) {
         viewModelScope.launch {
             val idsToProcess = songsToProcess
-                .filter { it.localPath != null && it.artist == "Unknown Artist" }
-                .map { it.id }
+                .filter { it.localPath != null && it.song.artist == "Unknown Artist" }
+                .map { it.song.id }
                 .filter { it !in _processingMetadataIds.value }
 
             if (idsToProcess.isEmpty()) return@launch
@@ -105,11 +170,11 @@ class MainViewModel(
         }
     }
 
-    fun downloadSongs(songs: List<Song>) {
+    fun downloadSongs(songs: List<SyncSong>) {
         viewModelScope.launch {
             songs.forEach { song ->
                 if (song.localPath == null) {
-                    repository.downloadSong(song)
+                    repository.downloadSong(song.song.id)
                 }
             }
         }

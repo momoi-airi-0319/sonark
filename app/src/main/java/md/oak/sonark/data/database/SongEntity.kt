@@ -2,52 +2,76 @@ package md.oak.sonark.data.database
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import md.oak.sonark.data.model.AlbumType
+import md.oak.sonark.data.model.DownloadStatus
 import md.oak.sonark.data.model.Song
+import md.oak.sonark.data.model.SyncSong
 
-@Entity(tableName = "songs")
+@Entity(
+    tableName = "songs",
+    foreignKeys = [
+        androidx.room.ForeignKey(
+            entity = AlbumEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["albumId"],
+            onDelete = androidx.room.ForeignKey.CASCADE
+        )
+    ],
+    indices = [androidx.room.Index("albumId")]
+)
 data class SongEntity(
     @PrimaryKey val id: String,
     val title: String,
     val artist: String,
-    val album: String,
     val duration: Long,
     val data: String,
     val albumId: String,
-    val imageUrl: String?,
     val localPath: String?,
-    val isCueAlbum: Boolean,
     val startOffset: Long,
-    val providerId: String
+    val providerId: String,
+    val size: Long = 0,
+    val md5Hash: String? = null,
+    val downloadStatus: DownloadStatus = DownloadStatus.NONE,
+    val downloadProgress: Int = 0
 ) {
-    fun toSong() = Song(
+    fun toSong(albumTitle: String, imageUrl: String?, type: AlbumType) = Song(
         id = id,
         title = title,
         artist = artist,
-        album = album,
+        album = albumTitle,
         duration = duration,
+        imageUrl = imageUrl,
+        type = type
+    )
+
+    fun toSyncSong(albumTitle: String, imageUrl: String?, type: AlbumType) = SyncSong(
+        song = toSong(albumTitle, imageUrl, type),
         data = data,
         albumId = albumId,
-        imageUrl = imageUrl,
         localPath = localPath,
-        isCueAlbum = isCueAlbum,
         startOffset = startOffset,
-        providerId = providerId
+        providerId = providerId,
+        size = size,
+        md5Hash = md5Hash,
+        downloadStatus = downloadStatus,
+        downloadProgress = downloadProgress
     )
 
     companion object {
-        fun fromSong(song: Song) = SongEntity(
-            id = song.id,
-            title = song.title,
-            artist = song.artist,
-            album = song.album,
-            duration = song.duration,
-            data = song.data,
-            albumId = song.albumId,
-            imageUrl = song.imageUrl,
-            localPath = song.localPath,
-            isCueAlbum = song.isCueAlbum,
-            startOffset = song.startOffset,
-            providerId = song.providerId
+        fun fromSyncSong(syncSong: SyncSong) = SongEntity(
+            id = syncSong.song.id,
+            title = syncSong.song.title,
+            artist = syncSong.song.artist,
+            duration = syncSong.song.duration,
+            data = syncSong.data,
+            albumId = syncSong.albumId,
+            localPath = syncSong.localPath,
+            startOffset = syncSong.startOffset,
+            providerId = syncSong.providerId,
+            size = syncSong.size,
+            md5Hash = syncSong.md5Hash,
+            downloadStatus = syncSong.downloadStatus,
+            downloadProgress = syncSong.downloadProgress
         )
     }
 }
