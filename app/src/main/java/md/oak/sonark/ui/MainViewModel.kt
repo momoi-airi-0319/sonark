@@ -104,7 +104,7 @@ class MainViewModel(
                         isDownloading = downloading.isNotEmpty()
                     )
                 }
-            }.sortedByDescending { it.isDownloading }
+            }.sortedBy { it.title.lowercase() }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
