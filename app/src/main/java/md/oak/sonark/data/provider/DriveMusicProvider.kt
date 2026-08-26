@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.FileOutputStream
 import java.io.File as JavaFile
+import androidx.core.net.toUri
 
 class DriveMusicProvider : MusicProvider {
     override val id: String = "google_drive"
@@ -76,7 +77,7 @@ class DriveMusicProvider : MusicProvider {
     }
 
     override suspend fun resolveStreamUri(song: SyncSong): Uri {
-        return Uri.parse(song.data)
+        return song.data.toUri()
     }
 
     override suspend fun downloadSong(
@@ -131,7 +132,7 @@ class DriveMusicProvider : MusicProvider {
     override fun getAuthHeaders(): Map<String, String> {
         val token = try {
             credential?.getToken()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
         return if (token != null) {
@@ -191,6 +192,8 @@ class DriveMusicProvider : MusicProvider {
             var currentTrackArtist = ""
             var currentTrackNumber = ""
             
+            val tempSongs = mutableListOf<SyncSong>()
+            
             content.lines().forEach { line ->
                 val trimmed = line.trim()
                 when {
@@ -228,7 +231,7 @@ class DriveMusicProvider : MusicProvider {
                             type = AlbumType.CUE
                         )
                         
-                        songs.add(SyncSong(
+                        tempSongs.add(SyncSong(
                             song = song,
                             data = "https://www.googleapis.com/drive/v3/files/${audioFile.id}?alt=media",
                             albumId = cueFile.id,
@@ -244,6 +247,17 @@ class DriveMusicProvider : MusicProvider {
                         currentTrackTitle = ""
                     }
                 }
+            }
+
+            // Calculate durations
+            for (i in tempSongs.indices) {
+                val current = tempSongs[i]
+                val duration = if (i < tempSongs.size - 1) {
+                    tempSongs[i + 1].startOffset - current.startOffset
+                } else {
+                    0L // We don't know the end of the file here easily, but better than nothing
+                }
+                songs.add(current.copy(song = current.song.copy(duration = duration)))
             }
         } catch (e: Exception) {
             e.printStackTrace()

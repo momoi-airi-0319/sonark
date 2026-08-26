@@ -40,6 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -158,25 +159,27 @@ fun PlayerScreen(
                 Spacer(modifier = Modifier.height(32.dp))
 
                 // Progress Bar
-                Column {
-                    WavySlider(
-                        value = if (duration > 0) progress.toFloat() / duration.toFloat() else 0f,
-                        onValueChange = { onSeekTo((it * duration).toLong()) },
-                        isPlaying = isPlaying,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = formatTime(progress),
-                            style = MaterialTheme.typography.labelMedium
+                key(metadata.id) {
+                    Column {
+                        WavySlider(
+                            value = if (duration > 0) progress.toFloat() / duration.toFloat() else 0f,
+                            onValueChange = { onSeekTo((it * duration).toLong()) },
+                            isPlaying = isPlaying,
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        Text(
-                            text = formatTime(duration),
-                            style = MaterialTheme.typography.labelMedium
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = formatTime(progress),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                            Text(
+                                text = formatTime(duration),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
                     }
                 }
 

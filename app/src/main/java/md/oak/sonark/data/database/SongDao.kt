@@ -15,6 +15,9 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE id = :id")
     suspend fun getSongById(id: String): SongEntity?
 
+    @Query("SELECT * FROM songs WHERE albumId = :albumId")
+    suspend fun getSongsByAlbum(albumId: String): List<SongEntity>
+
     @Query("SELECT * FROM songs WHERE downloadStatus = 'PENDING'")
     fun getSongsToDownloadFlow(): Flow<List<SongEntity>>
 

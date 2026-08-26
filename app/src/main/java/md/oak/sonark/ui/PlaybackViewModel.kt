@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.playback.PlaybackService
 import androidx.core.net.toUri
 import kotlin.time.Duration.Companion.milliseconds
@@ -52,6 +53,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     val queue: StateFlow<List<SyncSong>> = _queue.asStateFlow()
 
     private var progressJob: Job? = null
+    private var lastSeekTime = 0L
 
     init {
         val sessionToken = SessionToken(application, ComponentName(application, PlaybackService::class.java))
@@ -75,12 +77,26 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val mediaId = mediaItem?.mediaId
-                _currentSong.value = _queue.value.find { it.song.id == mediaId }
+                val song = _queue.value.find { it.song.id == mediaId }
+                _currentSong.value = song
+                if (song != null) {
+                    _duration.value = song.song.duration
+                    _playbackProgress.value = 0L
+                    lastSeekTime = 0L // Allow immediate updates for the new song
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
-                    _duration.value = controller.duration
+                    val playerDuration = controller.duration
+                    if (playerDuration > 0) {
+                        val currentSong = _currentSong.value
+                        // For CUE tracks, trust our calculated duration if we already have one
+                        val isCue = currentSong?.song?.type == AlbumType.CUE
+                        if (!isCue || _duration.value <= 0) {
+                            _duration.value = playerDuration
+                        }
+                    }
                 }
             }
 
@@ -113,16 +129,29 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
 
         _queue.value = playableSongs
         
-        val mediaItems = playableSongs.map { syncSong ->
+        val mediaItems = playableSongs.mapIndexed { index, syncSong ->
             val uri = Uri.fromFile(java.io.File(syncSong.localPath!!))
+            val clippingBuilder = MediaItem.ClippingConfiguration.Builder()
+                .setStartPositionMs(syncSong.startOffset)
+            
+            val trackDuration = if (syncSong.song.duration > 0) {
+                syncSong.song.duration
+            } else if (syncSong.song.type == AlbumType.CUE) {
+                // Fallback: If duration is unknown, try calculating from the next track in the queue
+                val nextSong = playableSongs.getOrNull(index + 1)
+                if (nextSong != null && nextSong.albumId == syncSong.albumId) {
+                    nextSong.startOffset - syncSong.startOffset
+                } else 0L
+            } else 0L
+
+            if (trackDuration > 0) {
+                clippingBuilder.setEndPositionMs(syncSong.startOffset + trackDuration)
+            }
+
             MediaItem.Builder()
                 .setMediaId(syncSong.song.id)
                 .setUri(uri)
-                .setClippingConfiguration(
-                    MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(syncSong.startOffset)
-                        .build()
-                )
+                .setClippingConfiguration(clippingBuilder.build())
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(syncSong.song.title)
@@ -168,6 +197,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     fun seekTo(position: Long) {
         controller?.seekTo(position)
         _playbackProgress.value = position
+        lastSeekTime = System.currentTimeMillis()
     }
 
     fun skipNext() {
@@ -182,8 +212,12 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
             while (true) {
-                _playbackProgress.value = controller?.currentPosition ?: 0L
-                delay(1000.milliseconds)
+                val now = System.currentTimeMillis()
+                if (now - lastSeekTime > 500) {
+                    val pos = controller?.currentPosition ?: 0L
+                    _playbackProgress.value = pos
+                }
+                delay(200.milliseconds)
             }
         }
     }

@@ -2,14 +2,14 @@ package md.oak.sonark.data.repository
 
 import android.content.Context
 import android.media.MediaMetadataRetriever
-import android.os.Environment
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import android.util.Log
-import md.oak.sonark.data.Utils
-import md.oak.sonark.data.database.*
+import kotlinx.coroutines.withContext
+import md.oak.sonark.data.database.AlbumDao
+import md.oak.sonark.data.database.AlbumEntity
+import md.oak.sonark.data.database.SongDao
+import md.oak.sonark.data.database.SongEntity
 import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.data.model.DownloadStatus
@@ -24,7 +24,6 @@ class MusicRepository(
     private val albumDao: AlbumDao
 ) {
 
-    private val musicDir = java.io.File(context.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "sonark_music").apply { if (!exists()) mkdirs() }
     private val cacheDir = java.io.File(context.cacheDir, "music_cache").apply { if (!exists()) mkdirs() }
     private val providers = mutableMapOf<String, MusicProvider>()
 
@@ -178,7 +177,7 @@ class MusicRepository(
             retriever.setDataSource(entity.localPath)
             val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown Artist"
             val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: entity.title
-            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+            val totalDuration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
             
             var imageUrl = album.imageUrl
             if (imageUrl == null || imageUrl.startsWith("https://")) {
@@ -192,12 +191,27 @@ class MusicRepository(
                     albumDao.updateAlbum(album.copy(imageUrl = imageUrl))
                 }
             }
-            
-            songDao.updateSong(entity.copy(
-                artist = artist, 
-                title = title, 
-                duration = duration
-            ))
+
+            if (album.type == AlbumType.CUE) {
+                val cueSongs = songDao.getSongsByAlbum(album.id).sortedBy { it.startOffset }
+                for (i in cueSongs.indices) {
+                    val current = cueSongs[i]
+                    val trackDuration = if (i < cueSongs.size - 1) {
+                        cueSongs[i + 1].startOffset - current.startOffset
+                    } else if (totalDuration > 0) {
+                        totalDuration - current.startOffset
+                    } else {
+                        current.duration
+                    }
+                    songDao.updateSong(current.copy(duration = trackDuration))
+                }
+            } else {
+                songDao.updateSong(entity.copy(
+                    artist = artist,
+                    title = title,
+                    duration = totalDuration
+                ))
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {

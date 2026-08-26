@@ -31,6 +31,9 @@ fun WavySlider(
     activeColor: Color = MaterialTheme.colorScheme.primary,
     inactiveColor: Color = MaterialTheme.colorScheme.surfaceVariant
 ) {
+    var draggingValue by remember { mutableStateOf<Float?>(null) }
+    val displayValue = draggingValue ?: value
+
     val infiniteTransition = rememberInfiniteTransition(label = "wave")
     val phase by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -53,14 +56,32 @@ fun WavySlider(
             .height(48.dp)
             .fillMaxWidth()
             .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    onValueChange((offset.x / size.width).coerceIn(0f, 1f))
-                }
+                detectTapGestures(
+                    onTap = { offset ->
+                        val newValue = (offset.x / size.width).coerceIn(0f, 1f)
+                        onValueChange(newValue)
+                    }
+                )
             }
             .pointerInput(Unit) {
-                detectDragGestures { change, _ ->
-                    onValueChange((change.position.x / size.width).coerceIn(0f, 1f))
-                }
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        draggingValue = (offset.x / size.width).coerceIn(0f, 1f)
+                    },
+                    onDragEnd = {
+                        draggingValue?.let { onValueChange(it) }
+                        draggingValue = null
+                    },
+                    onDragCancel = {
+                        draggingValue = null
+                    },
+                    onDrag = { change, dragAmount ->
+                        val currentDraggingValue = draggingValue ?: value
+                        val newValue = (currentDraggingValue + dragAmount.x / size.width).coerceIn(0f, 1f)
+                        draggingValue = newValue
+                        change.consume()
+                    }
+                )
             }
     ) {
         Canvas(modifier = Modifier.fillMaxWidth().height(48.dp)) {
@@ -68,7 +89,7 @@ fun WavySlider(
             val height = size.height
             val centerY = height / 2
             
-            val activeWidth = width * value
+            val activeWidth = width * displayValue
             
             val maxAmplitude = 6.dp.toPx()
             val waveLength = 40.dp.toPx()
