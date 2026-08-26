@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -70,59 +72,52 @@ fun WavySlider(
             
             val maxAmplitude = 6.dp.toPx()
             val waveLength = 40.dp.toPx()
+            val strokeWidth = 4.dp.toPx()
             
             // Draw Active Wave
             if (activeWidth > 0) {
                 val activePath = Path().apply {
-                    moveTo(0f, centerY)
                     val resolution = 2 // px
-                    for (x in resolution..activeWidth.toInt() step resolution) {
+                    for (x in 0..activeWidth.toInt() step resolution) {
                         val xFloat = x.toFloat()
-                        val relativeX = xFloat / waveLength * 2 * PI.toFloat()
+                        // Wave emanates from the thumb (activeWidth)
+                        val relativeX = (activeWidth - xFloat) / waveLength * 2 * PI.toFloat()
+                        // Use (relativeX - phase) to propagate the wave to the left
+                        val y = centerY + maxAmplitude * amplitudeMultiplier * sin(relativeX - phase)
                         
-                        // Dampen amplitude at both ends of the active segment
-                        val dampening = when {
-                            xFloat < 24.dp.toPx() -> xFloat / 24.dp.toPx()
-                            activeWidth - xFloat < 24.dp.toPx() -> (activeWidth - xFloat) / 24.dp.toPx()
-                            else -> 1f
-                        }.coerceIn(0f, 1f)
-                        
-                        val y = centerY + maxAmplitude * amplitudeMultiplier * dampening * sin(relativeX - phase)
-                        lineTo(xFloat, y)
+                        if (x == 0) moveTo(xFloat, y) else lineTo(xFloat, y)
                     }
-                    // Ensure it ends exactly at the thumb
-                    lineTo(activeWidth, centerY)
+                    // Ensure the path reaches the thumb precisely
+                    val finalY = centerY + maxAmplitude * amplitudeMultiplier * sin(0f - phase)
+                    lineTo(activeWidth, finalY)
                 }
                 
                 drawPath(
                     path = activePath,
                     color = activeColor,
-                    style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                 )
             }
             
             // Draw Inactive Line
             if (activeWidth < width) {
-                val inactivePath = Path().apply {
-                    moveTo(activeWidth, centerY)
-                    lineTo(width, centerY)
-                }
-                
-                drawPath(
-                    path = inactivePath,
+                drawLine(
                     color = inactiveColor,
-                    style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
+                    start = Offset(activeWidth, centerY),
+                    end = Offset(width, centerY),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round
                 )
             }
             
-            // Draw Thumb
-            val thumbX = activeWidth
-            val thumbY = centerY
-            
-            drawCircle(
+            // Draw Thumb (Vertical Bar/Capsule)
+            val thumbBarWidth = 4.dp.toPx()
+            val thumbBarHeight = 24.dp.toPx()
+            drawRoundRect(
                 color = activeColor,
-                radius = 8.dp.toPx(),
-                center = Offset(thumbX, thumbY)
+                topLeft = Offset(activeWidth - thumbBarWidth / 2, centerY - thumbBarHeight / 2),
+                size = Size(thumbBarWidth, thumbBarHeight),
+                cornerRadius = CornerRadius(thumbBarWidth / 2, thumbBarWidth / 2)
             )
         }
     }
