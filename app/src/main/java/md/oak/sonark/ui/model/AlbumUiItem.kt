@@ -9,7 +9,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import md.oak.sonark.data.model.Album
@@ -33,17 +32,7 @@ sealed class AlbumUiItem {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = album.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    minLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = album.artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    style = MaterialTheme.typography.titleSmall
                 )
             }
         }

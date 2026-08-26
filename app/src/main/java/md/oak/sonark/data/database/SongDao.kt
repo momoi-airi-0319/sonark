@@ -15,7 +15,7 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE id = :id")
     suspend fun getSongById(id: String): SongEntity?
 
-    @Query("SELECT * FROM songs WHERE downloadStatus = 'PENDING' OR downloadStatus = 'DOWNLOADING'")
+    @Query("SELECT * FROM songs WHERE downloadStatus = 'PENDING'")
     fun getSongsToDownloadFlow(): Flow<List<SongEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

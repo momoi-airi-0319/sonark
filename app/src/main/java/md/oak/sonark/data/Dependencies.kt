@@ -31,6 +31,7 @@ object Dependencies {
             downloadManager = DownloadManager(
                 context.applicationContext,
                 database.songDao(),
+                database.albumDao(),
                 musicRepository
             ).apply { start() }
         }

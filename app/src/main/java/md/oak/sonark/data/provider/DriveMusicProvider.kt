@@ -55,14 +55,16 @@ class DriveMusicProvider : MusicProvider {
                     name.startsWith("cover.") || name.startsWith("folder.")
                 }
                 val imageUrl = coverFile?.let { "https://www.googleapis.com/drive/v3/files/${it.id}?alt=media" }
+                val coverSize = coverFile?.getSize() ?: 0L
+                val coverMd5 = coverFile?.md5Checksum
 
                 val cueFile = files.find { it.name.endsWith(".cue", ignoreCase = true) }
                 if (cueFile != null) {
-                    songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl))
+                    songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl, coverSize, coverMd5))
                 } else {
                     for (file in files) {
                         if (isAudioFile(file)) {
-                            songs.add(parseSong(file, albumFolder.id, albumFolder.name, imageUrl))
+                            songs.add(parseSong(file, albumFolder.id, albumFolder.name, imageUrl, coverSize, coverMd5))
                         }
                     }
                 }
@@ -176,7 +178,9 @@ class DriveMusicProvider : MusicProvider {
         cueFile: File,
         allFiles: List<File>,
         albumName: String,
-        imageUrl: String?
+        imageUrl: String?,
+        coverSize: Long = 0,
+        coverMd5: String? = null
     ): List<SyncSong> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<SyncSong>()
         try {
@@ -231,7 +235,10 @@ class DriveMusicProvider : MusicProvider {
                             providerId = id,
                             size = audioFile.getSize() ?: 0L,
                             md5Hash = audioFile.md5Checksum,
-                            startOffset = offsetMs
+                            startOffset = offsetMs,
+                            coverData = imageUrl,
+                            coverSize = coverSize,
+                            coverMd5 = coverMd5
                         ))
                         
                         currentTrackTitle = ""
@@ -253,7 +260,7 @@ class DriveMusicProvider : MusicProvider {
         return (minutes * 60 * 1000) + (seconds * 1000) + (frames * 1000 / 75)
     }
 
-    private fun parseSong(file: File, albumId: String, albumName: String, imageUrl: String?): SyncSong {
+    private fun parseSong(file: File, albumId: String, albumName: String, imageUrl: String?, coverSize: Long = 0, coverMd5: String? = null): SyncSong {
         val fileName = file.name.substringBeforeLast(".")
         val title = if (fileName.contains(" - ")) {
             fileName.substringAfter(" - ").trim()
@@ -277,7 +284,10 @@ class DriveMusicProvider : MusicProvider {
             albumId = albumId,
             providerId = id,
             size = file.getSize() ?: 0L,
-            md5Hash = file.md5Checksum
+            md5Hash = file.md5Checksum,
+            coverData = imageUrl,
+            coverSize = coverSize,
+            coverMd5 = coverMd5
         )
     }
 }

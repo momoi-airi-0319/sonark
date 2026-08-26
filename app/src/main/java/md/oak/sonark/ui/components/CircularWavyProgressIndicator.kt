@@ -68,10 +68,26 @@ fun CircularWavyProgressIndicator(
             val maxAmplitude = 1.8.dp.toPx()
             val wavesCount = 6
             
-            // Draw Background Track
-            drawCircle(
+            // Draw Background Track (Wavy)
+            val backgroundPath = Path()
+            val totalSegments = 360 * 2
+            for (i in 0..totalSegments) {
+                val relAngle = i.toFloat() / totalSegments * 360f
+                val angleDeg = -90f + relAngle
+                val angleRad = angleDeg * PI.toFloat() / 180f
+                
+                val waveAngle = (relAngle / 360f) * 2 * PI.toFloat() * wavesCount
+                val modulation = maxAmplitude * amplitudeMultiplier * sin(waveAngle - phase)
+                
+                val x = center.x + (radius + modulation) * cos(angleRad)
+                val y = center.y + (radius + modulation) * sin(angleRad)
+                
+                if (i == 0) backgroundPath.moveTo(x, y) else backgroundPath.lineTo(x, y)
+            }
+            backgroundPath.close()
+            drawPath(
+                path = backgroundPath,
                 color = inactiveColor,
-                radius = radius,
                 style = Stroke(width = 2.dp.toPx())
             )
 
@@ -84,11 +100,12 @@ fun CircularWavyProgressIndicator(
                 val segments = (sweepAngle * 2).toInt().coerceAtLeast(1) // 2 segments per degree for smoothness
                 
                 for (i in 0..segments) {
-                    val angleDeg = startAngle + (i.toFloat() / segments * sweepAngle)
+                    val relAngle = i.toFloat() / segments * sweepAngle
+                    val angleDeg = startAngle + relAngle
                     val angleRad = angleDeg * PI.toFloat() / 180f
                     
-                    // Wavy modulation
-                    val waveAngle = (i.toFloat() / segments * sweepAngle) / 360f * 2 * PI.toFloat() * wavesCount
+                    // Wavy modulation - matches background logic
+                    val waveAngle = (relAngle / 360f) * 2 * PI.toFloat() * wavesCount
                     val modulation = maxAmplitude * amplitudeMultiplier * sin(waveAngle - phase)
                     
                     val x = center.x + (radius + modulation) * cos(angleRad)

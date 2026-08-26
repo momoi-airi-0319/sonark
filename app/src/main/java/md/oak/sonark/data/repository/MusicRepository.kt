@@ -85,13 +85,37 @@ class MusicRepository(
         }
 
         if (allSyncSongs.isNotEmpty()) {
+            val existingAlbums = albumDao.getAllAlbums().associateBy { it.id }
             val albums = allSyncSongs.groupBy { it.albumId }.map { (albumId, syncSongs) ->
-                val firstSong = syncSongs.first().song
+                val firstSyncSong = syncSongs.first()
+                val firstSong = firstSyncSong.song
+                val existing = existingAlbums[albumId]
+
+                val isFullyDownloaded = existing != null &&
+                                       existing.localPath != null &&
+                                       existing.downloadStatus == DownloadStatus.COMPLETED &&
+                                       existing.md5Hash == firstSyncSong.coverMd5 &&
+                                       java.io.File(existing.localPath).exists()
+
+                val isDownloading = existing != null &&
+                                   existing.downloadStatus == DownloadStatus.DOWNLOADING &&
+                                   existing.md5Hash == firstSyncSong.coverMd5
+
                 AlbumEntity(
                     id = albumId,
                     title = firstSong.album,
                     artist = syncSongs.firstOrNull { it.song.artist != "Unknown Artist" }?.song?.artist ?: firstSong.artist,
                     imageUrl = syncSongs.firstOrNull { it.song.imageUrl != null }?.song?.imageUrl,
+                    localPath = existing?.localPath,
+                    downloadStatus = when {
+                        isFullyDownloaded -> DownloadStatus.COMPLETED
+                        isDownloading -> DownloadStatus.DOWNLOADING
+                        firstSyncSong.coverData == null -> DownloadStatus.NONE
+                        else -> DownloadStatus.PENDING
+                    },
+                    downloadProgress = if (isDownloading) existing.downloadProgress else 0,
+                    size = firstSyncSong.coverSize,
+                    md5Hash = firstSyncSong.coverMd5,
                     type = if (syncSongs.any { it.song.type == AlbumType.CUE }) AlbumType.CUE else AlbumType.NORMAL
                 )
             }
@@ -102,15 +126,31 @@ class MusicRepository(
             val songEntities = allSyncSongs.map { syncSong ->
                 val existing = existingSongs[syncSong.song.id]
                 
-                val isAlreadyGood = existing != null && 
+                val isFullyDownloaded = existing != null && 
                                    existing.localPath != null && 
                                    existing.downloadStatus == DownloadStatus.COMPLETED && 
                                    existing.md5Hash == syncSong.md5Hash &&
                                    java.io.File(existing.localPath).exists()
+                
+                val isDownloading = existing != null &&
+                                   existing.downloadStatus == DownloadStatus.DOWNLOADING &&
+                                   existing.md5Hash == syncSong.md5Hash
+                
+                val hasValidMetadata = existing != null && existing.artist != "Unknown Artist"
 
                 val finalSyncSong = syncSong.copy(
-                    downloadStatus = if (isAlreadyGood) DownloadStatus.COMPLETED else DownloadStatus.PENDING,
-                    localPath = existing?.localPath
+                    song = syncSong.song.copy(
+                        artist = if (hasValidMetadata) existing.artist else syncSong.song.artist,
+                        title = if (hasValidMetadata) existing.title else syncSong.song.title,
+                        duration = if (hasValidMetadata) existing.duration else syncSong.song.duration
+                    ),
+                    downloadStatus = when {
+                        isFullyDownloaded -> DownloadStatus.COMPLETED
+                        isDownloading -> DownloadStatus.DOWNLOADING
+                        else -> DownloadStatus.PENDING
+                    },
+                    localPath = existing?.localPath,
+                    downloadProgress = if (isDownloading) existing.downloadProgress else 0
                 )
                 SongEntity.fromSyncSong(finalSyncSong)
             }

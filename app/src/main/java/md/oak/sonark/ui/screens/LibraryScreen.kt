@@ -87,7 +87,8 @@ fun LibraryScreen(
     var showAccountDialog by remember { mutableStateOf(false) }
 
     Scaffold(
-        modifier = modifier
+        modifier = modifier,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             LibraryGrid(
@@ -190,7 +191,7 @@ private fun LibraryGrid(
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 160.dp),
-                        contentPadding = PaddingValues(start = 16.dp, top = 160.dp, end = 16.dp, bottom = 120.dp),
+                        contentPadding = PaddingValues(start = 16.dp, top = 160.dp, end = 16.dp, bottom = 160.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize()
@@ -265,7 +266,7 @@ private fun FloatingTopBar(
             shape = CircleShape,
             tonalElevation = 6.dp,
             shadowElevation = 8.dp,
-            color = if (currentSong != null) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier
                 .height(56.dp)
                 .weight(1f, fill = false)
@@ -297,7 +298,7 @@ private fun FloatingTopBar(
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (currentSong != null) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }

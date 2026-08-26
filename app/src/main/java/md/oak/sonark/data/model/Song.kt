@@ -33,6 +33,9 @@ data class SyncSong(
     val md5Hash: String? = null,
     val localPath: String? = null,
     val startOffset: Long = 0L,
+    val coverData: String? = null,
+    val coverSize: Long = 0,
+    val coverMd5: String? = null,
     val downloadStatus: DownloadStatus = DownloadStatus.NONE,
     val downloadProgress: Int = 0
 )

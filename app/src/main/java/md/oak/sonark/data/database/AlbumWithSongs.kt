@@ -14,10 +14,11 @@ data class AlbumWithSongs(
     val songs: List<SongEntity>
 ) {
     fun toAlbum(): Album {
+        val finalImageUrl = album.localPath ?: album.imageUrl
         val domainSongs = songs.map { 
             it.toSong(
                 albumTitle = album.title,
-                imageUrl = album.imageUrl,
+                imageUrl = finalImageUrl,
                 type = album.type
             ) 
         }
@@ -25,13 +26,15 @@ data class AlbumWithSongs(
             AlbumType.NORMAL -> Album.Normal(
                 title = album.title,
                 artist = album.artist,
-                imageUrl = album.imageUrl,
+                imageUrl = finalImageUrl,
+                localPath = album.localPath,
                 songs = domainSongs
             )
             AlbumType.CUE -> Album.Cue(
                 title = album.title,
                 artist = album.artist,
-                imageUrl = album.imageUrl,
+                imageUrl = finalImageUrl,
+                localPath = album.localPath,
                 songs = domainSongs
             )
         }
