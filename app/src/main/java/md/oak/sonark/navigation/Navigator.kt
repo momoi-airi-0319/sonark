@@ -10,6 +10,13 @@ class Navigator(val state: NavigationState){
         if (route in state.backStacks.keys){
             // This is a top level route, just switch to it.
             state.topLevelRoute = route
+            // Reset the stack for this top level route to just the root
+            val stack = state.backStacks[route]
+            if (stack != null) {
+                while (stack.last() != route) {
+                    stack.removeLastOrNull()
+                }
+            }
         } else {
             state.backStacks[state.topLevelRoute]?.add(route)
         }

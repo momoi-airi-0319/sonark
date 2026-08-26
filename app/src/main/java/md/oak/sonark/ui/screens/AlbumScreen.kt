@@ -1,36 +1,60 @@
 package md.oak.sonark.ui.screens
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material3.*
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.Album
-import md.oak.sonark.data.model.DownloadStatus
 import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.ui.components.SongListItem
 import md.oak.sonark.ui.model.AlbumUiItem
+import md.oak.sonark.ui.utils.Formatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumScreen(
     album: Album,
     songs: List<SyncSong>,
+    currentSong: SyncSong?,
+    isPlaying: Boolean,
+    progress: Float,
     onSongClick: (SyncSong) -> Unit,
     onBackClick: () -> Unit,
     onLoadMetadata: (List<SyncSong>) -> Unit,
     onDownloadSongs: (List<SyncSong>) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    BackHandler {
+        onBackClick()
+    }
+    var showDetails by remember { mutableStateOf(false) }
+
     LaunchedEffect(songs) {
         onDownloadSongs(songs)
     }
@@ -44,13 +68,39 @@ fun AlbumScreen(
         }
     }
 
+    if (showDetails) {
+        AlbumDetailsDialog(
+            album = album,
+            songs = songs,
+            onDismiss = { showDetails = false }
+        )
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(album.title) },
+            CenterAlignedTopAppBar(
+                title = { 
+                    Text(
+                        text = album.title,
+                        textAlign = TextAlign.Center
+                    ) 
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            imageVector = Icons.Outlined.Home,
+                            contentDescription = "Home",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showDetails = true }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Info,
+                            contentDescription = "Details",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             )
@@ -58,47 +108,74 @@ fun AlbumScreen(
         modifier = modifier
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize()
+            modifier = Modifier.padding(padding).fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp)
         ) {
             item {
                 val uiItem = remember(album) { AlbumUiItem.from(album) }
                 uiItem.Header()
             }
-            items(songs) { syncSong ->
-                val song = syncSong.song
-                val isDownloaded = syncSong.localPath != null
-                ListItem(
-                    headlineContent = { 
-                        Text(
-                            text = song.title,
-                            color = if (isDownloaded) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        ) 
-                    },
-                    supportingContent = { 
-                        Column {
-                            Text(
-                                text = song.artist,
-                                color = if (isDownloaded) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            if (syncSong.downloadStatus == DownloadStatus.DOWNLOADING) {
-                                LinearProgressIndicator(
-                                    progress = { syncSong.downloadProgress / 100f },
-                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                                )
-                            }
-                        }
-                    },
-                    leadingContent = {
-                        when (syncSong.downloadStatus) {
-                            DownloadStatus.COMPLETED -> Icon(Icons.Default.CheckCircle, contentDescription = "Downloaded", tint = MaterialTheme.colorScheme.primary)
-                            DownloadStatus.DOWNLOADING -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                            DownloadStatus.ERROR -> Icon(Icons.Default.Error, contentDescription = "Error", tint = MaterialTheme.colorScheme.error)
-                            else -> Icon(Icons.Default.CloudDownload, contentDescription = "Not Downloaded", tint = MaterialTheme.colorScheme.outline)
-                        }
-                    },
-                    modifier = Modifier.clickable(enabled = isDownloaded) { onSongClick(syncSong) }
+            items(songs, key = { it.song.id }) { syncSong ->
+                SongListItem(
+                    syncSong = syncSong,
+                    isCurrent = syncSong.song.id == currentSong?.song?.id,
+                    isPlaying = isPlaying,
+                    progress = progress,
+                    onClick = { onSongClick(syncSong) }
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AlbumDetailsDialog(
+    album: Album,
+    songs: List<SyncSong>,
+    onDismiss: () -> Unit
+) {
+    val totalDuration = remember(songs) {
+        songs.sumOf { it.song.duration }
+    }
+    val formattedDuration = remember(totalDuration) {
+        Formatter.formatDuration(totalDuration)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        },
+        title = { Text("专辑详细信息") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetadataItem("名称", album.title)
+                MetadataItem("艺术家", album.artist)
+                MetadataItem("类型", if (album is Album.Cue) "CUE 专辑" else "标准专辑")
+                MetadataItem("曲目数量", songs.size.toString())
+                MetadataItem("总时长", formattedDuration)
+                album.localPath?.let {
+                    MetadataItem("本地路径", it)
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun MetadataItem(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium
+        )
     }
 }

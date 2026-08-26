@@ -179,7 +179,6 @@ class MainActivity : ComponentActivity() {
                 val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
                 val shuffleEnabled by playbackViewModel.shuffleEnabled.collectAsStateWithLifecycle()
                 val repeatMode by playbackViewModel.repeatMode.collectAsStateWithLifecycle()
-                val queue by playbackViewModel.queue.collectAsStateWithLifecycle()
 
                 val navigationState = rememberNavigationState(
                     startRoute = LibraryKey,
@@ -287,12 +286,14 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             entry<SearchKey> {
-                                SearchScreen(
-                                    viewModel = viewModel,
-                                    onBackClick = { navigator.goBack() },
+                                    SearchScreen(
+                                        viewModel = viewModel,
+                                        currentSong = currentSong,
+                                        isPlaying = isPlaying,
+                                        progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
+                                        onBackClick = { navigator.goBack() },
                                     onSongClick = { song ->
                                         playbackViewModel.playQueue(listOf(song), 0)
-                                        navigator.navigate(PlayerKey)
                                     }
                                 )
                             }
@@ -308,11 +309,17 @@ class MainActivity : ComponentActivity() {
                                     AlbumScreen(
                                         album = album,
                                         songs = albumSongs,
+                                        currentSong = currentSong,
+                                        isPlaying = isPlaying,
+                                        progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                                         onSongClick = { song ->
-                                            playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
-                                            navigator.navigate(PlayerKey)
+                                            if (song.song.id == currentSong?.song?.id) {
+                                                navigator.navigate(PlayerKey)
+                                            } else {
+                                                playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
+                                            }
                                         },
-                                        onBackClick = { navigator.goBack() },
+                                        onBackClick = { navigator.navigate(LibraryKey) },
                                         onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
                                         onDownloadSongs = { viewModel.downloadSongs(it) }
                                     )
@@ -326,14 +333,16 @@ class MainActivity : ComponentActivity() {
                                     duration = duration,
                                     shuffleEnabled = shuffleEnabled,
                                     repeatMode = repeatMode,
-                                    queue = queue,
                                     onTogglePlayback = { playbackViewModel.togglePlayback() },
                                     onSeekTo = { playbackViewModel.seekTo(it) },
                                     onSkipNext = { playbackViewModel.skipNext() },
                                     onSkipPrevious = { playbackViewModel.skipPrevious() },
                                     onToggleShuffle = { playbackViewModel.toggleShuffle() },
                                     onToggleRepeatMode = { playbackViewModel.toggleRepeatMode() },
-                                    onBackClick = { navigator.goBack() }
+                                    onBackClick = { navigator.navigate(LibraryKey) },
+                                    onAlbumClick = { albumTitle ->
+                                        navigator.navigate(AlbumKey(albumTitle))
+                                    }
                                 )
                             }
                             entry<SettingsKey> {

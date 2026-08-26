@@ -17,11 +17,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.MainViewModel
+import md.oak.sonark.ui.components.SongListItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     viewModel: MainViewModel,
+    currentSong: SyncSong?,
+    isPlaying: Boolean,
+    progress: Float,
     onBackClick: () -> Unit,
     onSongClick: (SyncSong) -> Unit,
     modifier: Modifier = Modifier
@@ -72,7 +76,7 @@ fun SearchScreen(
             if (searchQuery.isEmpty()) {
                 SearchSuggestions()
             } else {
-                SearchResultsList(searchResults, onSongClick)
+                SearchResultsList(searchResults, currentSong, isPlaying, progress, onSongClick)
             }
         }
     }
@@ -133,15 +137,21 @@ fun CategoryItem(icon: ImageVector, title: String) {
 }
 
 @Composable
-fun SearchResultsList(results: List<SyncSong>, onSongClick: (SyncSong) -> Unit) {
+fun SearchResultsList(
+    results: List<SyncSong>,
+    currentSong: SyncSong?,
+    isPlaying: Boolean,
+    progress: Float,
+    onSongClick: (SyncSong) -> Unit
+) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(results) { syncSong ->
-            val song = syncSong.song
-            ListItem(
-                headlineContent = { Text(song.title) },
-                supportingContent = { Text("${song.artist} • ${song.album}") },
-                leadingContent = { Icon(Icons.Default.MusicNote, contentDescription = null) },
-                modifier = Modifier.clickable { onSongClick(syncSong) }
+            SongListItem(
+                syncSong = syncSong,
+                isCurrent = syncSong.song.id == currentSong?.song?.id,
+                isPlaying = isPlaying,
+                progress = progress,
+                onClick = { onSongClick(syncSong) }
             )
         }
     }

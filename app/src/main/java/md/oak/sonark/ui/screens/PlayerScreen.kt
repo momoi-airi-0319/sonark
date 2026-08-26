@@ -1,60 +1,26 @@
 package md.oak.sonark.ui.screens
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.RepeatOne
-import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.components.WavySlider
+import md.oak.sonark.ui.utils.Formatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,7 +31,6 @@ fun PlayerScreen(
     duration: Long,
     shuffleEnabled: Boolean,
     repeatMode: Int,
-    queue: List<SyncSong>,
     onTogglePlayback: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSkipNext: () -> Unit,
@@ -73,28 +38,41 @@ fun PlayerScreen(
     onToggleShuffle: () -> Unit,
     onToggleRepeatMode: () -> Unit,
     onBackClick: () -> Unit,
+    onAlbumClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showQueue by remember { mutableStateOf(false) }
+    BackHandler {
+        onBackClick()
+    }
+    var showSongDetails by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Now Playing") },
+            CenterAlignedTopAppBar(
+                title = { 
+                    Text(
+                        text = "Now Playing",
+                        textAlign = TextAlign.Center
+                    ) 
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Back"
+                            imageVector = Icons.Outlined.Home,
+                            contentDescription = "Home",
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showQueue = true }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
-                            contentDescription = "Queue"
-                        )
+                    if (song != null) {
+                        IconButton(onClick = { showSongDetails = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = "Song Details",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
             )
@@ -114,6 +92,7 @@ fun PlayerScreen(
 
                 // Album Art
                 Surface(
+                    onClick = { onAlbumClick(metadata.album) },
                     modifier = Modifier
                         .size(300.dp)
                         .aspectRatio(1f)
@@ -172,11 +151,11 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = formatTime(progress),
+                                text = Formatter.formatDuration(progress),
                                 style = MaterialTheme.typography.labelMedium
                             )
                             Text(
-                                text = formatTime(duration),
+                                text = Formatter.formatDuration(duration),
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
@@ -251,53 +230,58 @@ fun PlayerScreen(
                 }
             }
         }
-    }
 
-    if (showQueue) {
-        ModalBottomSheet(
-            onDismissRequest = { showQueue = false },
-            sheetState = rememberModalBottomSheetState()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = "Up Next",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                LazyColumn(modifier = Modifier.fillMaxHeight(0.6f)) {
-                    items(queue) { queuedSyncSong ->
-                        val queuedSong = queuedSyncSong.song
-                        ListItem(
-                            headlineContent = { 
-                                Text(
-                                    queuedSong.title,
-                                    fontWeight = if (queuedSyncSong == song) FontWeight.Bold else FontWeight.Normal
-                                ) 
-                            },
-                            supportingContent = { Text(queuedSong.artist) },
-                            leadingContent = {
-                                Icon(
-                                    imageVector = if (queuedSyncSong == song) Icons.Rounded.PlayArrow else Icons.Rounded.MusicNote,
-                                    contentDescription = null,
-                                    tint = if (queuedSyncSong == song) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                                )
-                            },
-                            modifier = Modifier.clickable { /* Could implement play from queue here */ }
-                        )
-                    }
-                }
-            }
+        if (showSongDetails && song != null) {
+            SongDetailsDialog(
+                song = song,
+                onDismiss = { showSongDetails = false }
+            )
         }
     }
 }
 
-private fun formatTime(ms: Long): String {
-    val seconds = (ms / 1000) % 60
-    val minutes = (ms / (1000 * 60)) % 60
-    return "%d:%02d".format(minutes, seconds)
+@Composable
+private fun SongDetailsDialog(
+    song: SyncSong,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        },
+        title = { Text("歌曲详细信息") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetadataItem("标题", song.song.title)
+                MetadataItem("艺术家", song.song.artist)
+                MetadataItem("专辑", song.song.album)
+                MetadataItem("时长", Formatter.formatDuration(song.song.duration))
+                song.localPath?.let {
+                    MetadataItem("本地路径", it)
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun MetadataItem(
+    label: String,
+    value: String
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium
+        )
+    }
 }

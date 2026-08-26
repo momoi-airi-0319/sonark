@@ -127,6 +127,20 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
             playableSongs.indexOfFirst { it.song.id == originalStartSong.song.id }.coerceAtLeast(0)
         } else 0
 
+        val targetSong = playableSongs.getOrNull(newStartIndex)
+        val isSameSong = targetSong?.song?.id == _currentSong.value?.song?.id
+        
+        if (isSameSong) {
+            val isSameQueue = _queue.value.size == playableSongs.size && 
+                             _queue.value.zip(playableSongs).all { it.first.song.id == it.second.song.id }
+            if (isSameQueue) {
+                if (!controller.isPlaying) {
+                    controller.play()
+                }
+                return
+            }
+        }
+
         _queue.value = playableSongs
         
         val mediaItems = playableSongs.mapIndexed { index, syncSong ->
@@ -163,10 +177,11 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
                 .build()
         }
 
-        controller.setMediaItems(mediaItems, newStartIndex, 0L)
+        val startPosition = if (isSameSong) controller.currentPosition else 0L
+        controller.setMediaItems(mediaItems, newStartIndex, startPosition)
         controller.prepare()
         controller.play()
-        _currentSong.value = playableSongs.getOrNull(newStartIndex)
+        _currentSong.value = targetSong
     }
 
     fun togglePlayback() {

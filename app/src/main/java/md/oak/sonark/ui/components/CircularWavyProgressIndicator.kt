@@ -28,6 +28,7 @@ fun CircularWavyProgressIndicator(
     isPlaying: Boolean,
     imageUrl: String?,
     modifier: Modifier = Modifier,
+    showImage: Boolean = true,
     activeColor: Color = MaterialTheme.colorScheme.primary,
     inactiveColor: Color = MaterialTheme.colorScheme.primaryContainer
 ) {
@@ -50,22 +51,25 @@ fun CircularWavyProgressIndicator(
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         // Album Art: Fill most of the area
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize(0.75f)
-                .clip(CircleShape),
-            contentScale = ContentScale.Crop
-        )
+        if (showImage) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize(0.75f)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
 
         // Wavy Progress
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = size.center
             val strokeWidth = 2.2.dp.toPx()
-            val radius = (size.minDimension / 2) - (strokeWidth / 2)
-            
             val maxAmplitude = 1.8.dp.toPx()
+            // Ensure radius accounts for both stroke width and wave amplitude to prevent clipping
+            val radius = (size.minDimension / 2) - (strokeWidth / 2) - maxAmplitude
+            
             val wavesCount = 6
             
             // Draw Background Track (Wavy)
