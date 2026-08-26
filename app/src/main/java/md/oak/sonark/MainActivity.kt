@@ -9,18 +9,27 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
@@ -37,15 +46,13 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
-import com.google.api.client.http.javanet.NetHttpTransport
-import com.google.api.client.json.gson.GsonFactory
-import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import md.oak.sonark.data.Dependencies
 import md.oak.sonark.navigation.AlbumKey
 import md.oak.sonark.navigation.LibraryKey
 import md.oak.sonark.navigation.Navigator
 import md.oak.sonark.navigation.PlayerKey
+import md.oak.sonark.navigation.SearchKey
 import md.oak.sonark.navigation.SettingsKey
 import md.oak.sonark.navigation.rememberNavigationState
 import md.oak.sonark.navigation.toEntries
@@ -56,11 +63,13 @@ import md.oak.sonark.ui.components.DownloadQueueBottomSheet
 import md.oak.sonark.ui.screens.AlbumScreen
 import md.oak.sonark.ui.screens.LibraryScreen
 import md.oak.sonark.ui.screens.PlayerScreen
+import md.oak.sonark.ui.screens.SearchScreen
 import md.oak.sonark.ui.screens.SettingsScreen
 import md.oak.sonark.ui.theme.SonarkTheme
 
 class MainActivity : ComponentActivity() {
 
+    @OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -71,27 +80,22 @@ class MainActivity : ComponentActivity() {
 
         val imageLoader = ImageLoader.Builder(this)
             .components {
-                add(object : Interceptor {
-                    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-                        val request = chain.request
-                        val url = request.data.toString()
-                        if (url.contains("googleapis.com") || url.contains("drive.google.com")) {
-                            val token = withContext(Dispatchers.IO) {
-                                try {
-                                    Dependencies.driveProvider.credential?.getToken()
-                                } catch (e: Exception) {
-                                    null
-                                }
-                            }
-                            if (token != null) {
-                                val authenticatedRequest = request.newBuilder()
-                                    .addHeader("Authorization", "Bearer $token")
-                                    .build()
-                                return chain.proceed(authenticatedRequest)
-                            }
+                add(Interceptor { chain ->
+                    val request = chain.request
+                    val url = request.data.toString()
+                    if (url.contains("googleapis.com") || url.contains("drive.google.com")) {
+                        val token = runCatching { 
+                            Dependencies.driveProvider.credential?.getToken() 
+                        }.getOrNull()
+                        
+                        if (token != null) {
+                            val authenticatedRequest = request.newBuilder()
+                                .addHeader("Authorization", "Bearer $token")
+                                .build()
+                            return@Interceptor chain.proceed(authenticatedRequest)
                         }
-                        return chain.proceed(request)
                     }
+                    chain.proceed(request)
                 })
             }
             .build()
@@ -105,14 +109,12 @@ class MainActivity : ComponentActivity() {
                     ).setSelectedAccount(account.account)
                     
                     Dependencies.driveProvider.credential = credential
-                    Log.d("Sonark", "Drive service updated for ${account.email}")
                 } catch (e: Exception) {
                     Log.e("Sonark", "Error updating drive service", e)
                     Dependencies.driveProvider.credential = null
                 }
             } else {
                 Dependencies.driveProvider.credential = null
-                Log.d("Sonark", "Drive service cleared")
             }
         }
 
@@ -123,17 +125,22 @@ class MainActivity : ComponentActivity() {
                 val settingsViewModel: SettingsViewModel = viewModel { SettingsViewModel(settingsRepository) }
                 
                 val gso = remember {
+                    @Suppress("DEPRECATION")
                     GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                         .requestEmail()
                         .requestScopes(Scope(DriveScopes.DRIVE_READONLY))
                         .build()
                 }
-                val googleSignInClient = remember { GoogleSignIn.getClient(this@MainActivity, gso) }
+                val googleSignInClient = remember { 
+                    @Suppress("DEPRECATION")
+                    GoogleSignIn.getClient(this@MainActivity, gso) 
+                }
 
                 val googleSignInLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.StartActivityForResult()
                 ) { result ->
-                    if (result.resultCode == Activity.RESULT_OK) {
+                    if (result.resultCode == RESULT_OK) {
+                        @Suppress("DEPRECATION")
                         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
                         try {
                             val account = task.getResult(ApiException::class.java)
@@ -148,16 +155,6 @@ class MainActivity : ComponentActivity() {
                             viewModel.setUnauthenticated()
                         }
                     } else {
-                        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                        try {
-                            task.getResult(ApiException::class.java)
-                        } catch (e: ApiException) {
-                            Log.e("Sonark", "Sign-in failed with status code: ${e.statusCode}")
-                            Toast.makeText(this@MainActivity, "Error Code: ${e.statusCode}", Toast.LENGTH_LONG).show()
-                        } catch (e: Exception) {
-                            val message = if (result.resultCode == Activity.RESULT_CANCELED) "Sign-in cancelled" else "Sign-in failed"
-                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-                        }
                         settingsViewModel.setGoogleAccount(null)
                         updateDriveService(null)
                         viewModel.setUnauthenticated()
@@ -186,12 +183,12 @@ class MainActivity : ComponentActivity() {
 
                 val navigationState = rememberNavigationState(
                     startRoute = LibraryKey,
-                    topLevelRoutes = setOf(LibraryKey, PlayerKey, SettingsKey)
+                    topLevelRoutes = setOf(LibraryKey, SettingsKey)
                 )
                 val navigator = remember { Navigator(navigationState) }
 
                 LaunchedEffect(Unit) {
-                    // Check for existing Google account
+                    @Suppress("DEPRECATION")
                     val lastAccount = GoogleSignIn.getLastSignedInAccount(this@MainActivity)
                     if (lastAccount != null) {
                         settingsViewModel.setGoogleAccount(lastAccount.email)
@@ -202,36 +199,80 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                NavigationSuiteScaffold(
-                    navigationSuiteItems = {
-                        item(
-                            selected = navigationState.topLevelRoute == LibraryKey,
-                            onClick = { navigator.navigate(LibraryKey) },
-                            icon = { Icon(Icons.Default.LibraryMusic, contentDescription = "Library") },
-                            label = { Text("Library") }
-                        )
-                        item(
-                            selected = navigationState.topLevelRoute == PlayerKey,
-                            onClick = { navigator.navigate(PlayerKey) },
-                            icon = { Icon(Icons.Default.PlayArrow, contentDescription = "Player") },
-                            label = { Text("Player") }
-                        )
-                        item(
-                            selected = navigationState.topLevelRoute == SettingsKey,
-                            onClick = { navigator.navigate(SettingsKey) },
-                            icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                            label = { Text("Settings") }
-                        )
+                Scaffold(
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                    bottomBar = {
+                        val currentBackStack = navigationState.backStacks[navigationState.topLevelRoute]
+                        val isAtTopLevelRoot = (currentBackStack?.size ?: 0) <= 1
+                        
+                        if (isAtTopLevelRoot && navigationState.topLevelRoute != SettingsKey) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
+                                    .padding(bottom = 16.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    tonalElevation = 6.dp,
+                                    shadowElevation = 8.dp,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.height(64.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        FloatingNavItem(
+                                            selected = navigationState.topLevelRoute == LibraryKey,
+                                            onClick = { navigator.navigate(LibraryKey) },
+                                            icon = Icons.Default.LibraryMusic,
+                                            label = "Library"
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Surface(
+                                    shape = CircleShape,
+                                    tonalElevation = 6.dp,
+                                    shadowElevation = 8.dp,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.size(64.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        IconButton(
+                                            onClick = { navigator.navigate(SearchKey) },
+                                            modifier = Modifier.size(48.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Search,
+                                                contentDescription = "Search",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
-                ) {
+                ) { innerPadding ->
                     val entryProvider = remember {
                         entryProvider {
                             entry<LibraryKey> {
                                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                                val googleAccountName by settingsViewModel.googleAccountName.collectAsStateWithLifecycle()
                                 LibraryScreen(
                                     uiState = uiState,
                                     albums = albums,
+                                    googleAccountName = googleAccountName,
                                     downloadQueueSize = queueSize,
+                                    currentSong = currentSong,
+                                    isPlaying = isPlaying,
+                                    progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                                     searchQuery = searchQuery,
                                     onSearchQueryChange = { viewModel.setSearchQuery(it) },
                                     sortOrder = sortOrder,
@@ -239,8 +280,20 @@ class MainActivity : ComponentActivity() {
                                     onAlbumClick = { album ->
                                         navigator.navigate(AlbumKey(album.title))
                                     },
+                                    onPlayerClick = { navigator.navigate(PlayerKey) },
                                     onRefresh = { viewModel.loadSongs() },
-                                    onQueueClick = { showQueue = true }
+                                    onQueueClick = { showQueue = true },
+                                    onSettingsClick = { navigator.navigate(SettingsKey) }
+                                )
+                            }
+                            entry<SearchKey> {
+                                SearchScreen(
+                                    viewModel = viewModel,
+                                    onBackClick = { navigator.goBack() },
+                                    onSongClick = { song ->
+                                        playbackViewModel.playQueue(listOf(song), 0)
+                                        navigator.navigate(PlayerKey)
+                                    }
                                 )
                             }
                             entry<AlbumKey> { key ->
@@ -287,10 +340,7 @@ class MainActivity : ComponentActivity() {
                                 SettingsScreen(
                                     viewModel = settingsViewModel,
                                     onConnectClick = {
-                                        Log.e("Sonark", "onConnectClick triggered")
                                         if (settingsViewModel.googleAccountName.value == null) {
-                                            Log.e("Sonark", "DEBUG: Launching Sign-In")
-                                            Toast.makeText(this@MainActivity, "DEBUG: Launching Sign-In", Toast.LENGTH_SHORT).show()
                                             googleSignInLauncher.launch(googleSignInClient.signInIntent)
                                         } else {
                                             googleSignInClient.signOut().addOnCompleteListener {
@@ -299,16 +349,21 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.loadSongs()
                                             }
                                         }
-                                    }
+                                    },
+                                    onBackClick = { navigator.goBack() }
                                 )
                             }
                         }
                     }
 
-                    NavDisplay(
-                        entries = navigationState.toEntries(entryProvider),
-                        onBack = { navigator.goBack() }
-                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        NavDisplay(
+                            entries = navigationState.toEntries(entryProvider),
+                            onBack = { navigator.goBack() }
+                        )
+                    }
+                    // Satisfy innerPadding consumption
+                    Spacer(modifier = Modifier.padding(innerPadding))
 
                     if (showQueue) {
                         DownloadQueueBottomSheet(
@@ -317,6 +372,42 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun FloatingNavItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector,
+    label: String
+) {
+    Surface(
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (selected) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
