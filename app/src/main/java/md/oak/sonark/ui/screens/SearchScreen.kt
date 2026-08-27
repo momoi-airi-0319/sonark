@@ -1,51 +1,82 @@
 package md.oak.sonark.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import md.oak.sonark.data.model.SyncSong
-import md.oak.sonark.ui.MainViewModel
-import md.oak.sonark.ui.components.SongListItem
 import androidx.compose.ui.tooling.preview.Preview
-import md.oak.sonark.ui.theme.SonarkTheme
+import androidx.compose.ui.unit.dp
+import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.Song
+import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.ui.SearchUiState
+import md.oak.sonark.ui.SearchViewModel
+import md.oak.sonark.ui.components.SongListItem
+import md.oak.sonark.ui.model.AlbumUiItem
+import md.oak.sonark.ui.theme.SonarkTheme
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
-    viewModel: MainViewModel,
+    viewModel: SearchViewModel,
     currentSong: SyncSong?,
     isPlaying: Boolean,
     progress: Float,
     onBackClick: () -> Unit,
     onSongClick: (SyncSong) -> Unit,
+    onAlbumClick: (Album) -> Unit,
+    onArtistClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
-    val searchResults by viewModel.songs.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     SearchContent(
         searchQuery = searchQuery,
         onSearchQueryChange = { viewModel.setSearchQuery(it) },
-        searchResults = searchResults,
+        uiState = uiState,
         currentSong = currentSong,
         isPlaying = isPlaying,
         progress = progress,
         onBackClick = onBackClick,
         onSongClick = onSongClick,
+        onAlbumClick = onAlbumClick,
+        onArtistClick = onArtistClick,
         modifier = modifier
     )
 }
@@ -55,12 +86,14 @@ fun SearchScreen(
 fun SearchContent(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    searchResults: List<SyncSong>,
+    uiState: SearchUiState,
     currentSong: SyncSong?,
     isPlaying: Boolean,
     progress: Float,
     onBackClick: () -> Unit,
     onSongClick: (SyncSong) -> Unit,
+    onAlbumClick: (Album) -> Unit,
+    onArtistClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -80,14 +113,9 @@ fun SearchContent(
                             unfocusedIndicatorColor = Color.Transparent,
                         ),
                         trailingIcon = {
-                            Row {
-                                IconButton(onClick = { /* Voice search TODO */ }) {
-                                    Icon(Icons.Default.Mic, contentDescription = "Voice Search")
-                                }
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { onSearchQueryChange("") }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear")
-                                    }
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchQueryChange("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear")
                                 }
                             }
                         }
@@ -104,86 +132,119 @@ fun SearchContent(
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
             if (searchQuery.isEmpty()) {
-                SearchSuggestions()
-            } else {
-                SearchResultsList(searchResults, currentSong, isPlaying, progress, onSongClick)
-            }
-        }
-    }
-}
-
-@Composable
-fun SearchSuggestions() {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item {
-            Surface(
-                modifier = Modifier.padding(16.dp),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Lightbulb,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "Try searching for music",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            "尝试搜索您想听的内容",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "您可以说“轻快的音乐”或“我喜欢的周杰伦”",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
+            } else {
+                SearchResultsList(
+                    uiState = uiState,
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                    progress = progress,
+                    onSongClick = onSongClick,
+                    onAlbumClick = onAlbumClick,
+                    onArtistClick = onArtistClick
+                )
             }
         }
-
-        item { CategoryItem(Icons.Default.VideoLibrary, "视频") }
-        item { CategoryItem(Icons.Default.Screenshot, "屏幕截图") }
-        item { CategoryItem(Icons.Default.StarBorder, "收藏") }
-        item { CategoryItem(Icons.Default.AutoAwesome, "智能创作") }
-        item { CategoryItem(Icons.Default.AccessTime, "最近添加") }
     }
-}
-
-@Composable
-fun CategoryItem(icon: ImageVector, title: String) {
-    ListItem(
-        headlineContent = { Text(title) },
-        leadingContent = { Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp)) },
-        modifier = Modifier.clickable { /* TODO */ }
-    )
-    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
 fun SearchResultsList(
-    results: List<SyncSong>,
+    uiState: SearchUiState,
     currentSong: SyncSong?,
     isPlaying: Boolean,
     progress: Float,
-    onSongClick: (SyncSong) -> Unit
+    onSongClick: (SyncSong) -> Unit,
+    onAlbumClick: (Album) -> Unit,
+    onArtistClick: (String) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(results) { syncSong ->
-            SongListItem(
-                syncSong = syncSong,
-                isCurrent = syncSong.song.id == currentSong?.song?.id,
-                isPlaying = isPlaying,
-                progress = progress,
-                onClick = { onSongClick(syncSong) }
-            )
+        if (uiState.artists.isNotEmpty()) {
+            item { SearchSectionHeader("Artists") }
+            items(uiState.artists) { artist ->
+                ArtistListItem(artist = artist, onClick = { onArtistClick(artist) })
+            }
         }
+
+        if (uiState.albums.isNotEmpty()) {
+            item { SearchSectionHeader("Albums") }
+            items(uiState.albums) { album ->
+                val uiItem = remember(album) { AlbumUiItem.from(album) }
+                uiItem.ListItem(onClick = { onAlbumClick(album) })
+            }
+        }
+
+        if (uiState.songs.isNotEmpty()) {
+            item { SearchSectionHeader("Songs") }
+            items(uiState.songs) { syncSong ->
+                SongListItem(
+                    syncSong = syncSong,
+                    isCurrent = syncSong.song.id == currentSong?.song?.id,
+                    isPlaying = isPlaying,
+                    progress = progress,
+                    onClick = { onSongClick(syncSong) }
+                )
+            }
+        }
+
+        if (uiState.songs.isEmpty() && uiState.albums.isEmpty() && uiState.artists.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No results found",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SearchSectionHeader(title: String) {
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        HorizontalDivider(modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+fun ArtistListItem(artist: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Person, contentDescription = null)
+            }
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(text = artist, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -211,20 +272,14 @@ fun SearchScreenPreview() {
         SearchContent(
             searchQuery = "Jay",
             onSearchQueryChange = {},
-            searchResults = songs,
+            uiState = SearchUiState(songs = songs, artists = listOf("Jay Chou")),
             currentSong = null,
             isPlaying = false,
             progress = 0f,
             onBackClick = {},
-            onSongClick = {}
+            onSongClick = {},
+            onAlbumClick = {},
+            onArtistClick = {}
         )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun SearchSuggestionsPreview() {
-    SonarkTheme {
-        SearchSuggestions()
     }
 }

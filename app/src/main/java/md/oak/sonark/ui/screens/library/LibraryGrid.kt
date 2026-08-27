@@ -5,7 +5,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Security
@@ -27,8 +26,6 @@ import md.oak.sonark.ui.theme.SonarkTheme
 fun LibraryGrid(
     uiState: UIState,
     albums: List<Album>,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onRefresh: () -> Unit
 ) {
@@ -64,16 +61,7 @@ fun LibraryGrid(
                 )
             }
             UIState.SUCCESS -> {
-                if (albums.isEmpty() && searchQuery.isNotEmpty()) {
-                    EmptyState(
-                        icon = Icons.Default.Search,
-                        message = "No Results",
-                        description = "No albums found matching \"$searchQuery\"",
-                        actionLabel = "Clear Search",
-                        onAction = { onSearchQueryChange("") },
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                } else if (albums.isEmpty()) {
+                if (albums.isEmpty()) {
                     EmptyState(
                         icon = Icons.Rounded.LibraryMusic,
                         message = "No Songs Found",
@@ -106,8 +94,6 @@ fun LibraryGridLoadingPreview() {
         LibraryGrid(
             uiState = UIState.LOADING,
             albums = emptyList(),
-            searchQuery = "",
-            onSearchQueryChange = {},
             onAlbumClick = {},
             onRefresh = {}
         )
@@ -121,8 +107,6 @@ fun LibraryGridErrorPreview() {
         LibraryGrid(
             uiState = UIState.ERROR,
             albums = emptyList(),
-            searchQuery = "",
-            onSearchQueryChange = {},
             onAlbumClick = {},
             onRefresh = {}
         )

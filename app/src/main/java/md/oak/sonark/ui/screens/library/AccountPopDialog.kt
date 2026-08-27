@@ -20,9 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Refresh
@@ -235,19 +233,8 @@ private fun AccountDialogContent(
                         }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = googleAccountName?.substringBefore("@") ?: "Not Connected", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Text(text = googleAccountName ?: "Sign in to sync your music", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
-                    OutlinedButton(
-                        onClick = { },
-                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 16.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Text("管理您的 Sonark 账号", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -270,15 +257,8 @@ private fun AccountDialogContent(
             HorizontalDivider()
 
             AccountDialogItem(icon = Icons.Default.Settings, title = "设置", onClick = onSettingsClick)
-            AccountDialogItem(icon = Icons.AutoMirrored.Rounded.HelpOutline, title = "帮助与反馈", onClick = { })
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "隐私权政策", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = " • ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = "服务条款", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
         }
     }
 }

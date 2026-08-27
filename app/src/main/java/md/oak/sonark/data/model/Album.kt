@@ -17,13 +17,6 @@ sealed class Album {
     abstract val songs: List<Song>
     abstract val type: AlbumType
 
-    val discs: List<Disc>
-        get() = songs.groupBy { it.discNumber }
-            .map { (discNum, discSongs) ->
-                Disc(discNum, discSongs.sortedBy { it.trackNumber })
-            }
-            .sortedBy { it.discNumber }
-
     data class Normal(
         override val title: String,
         override val artist: String,

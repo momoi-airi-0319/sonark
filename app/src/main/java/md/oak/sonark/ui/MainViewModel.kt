@@ -26,30 +26,19 @@ class MainViewModel(
     private val _uiState = MutableStateFlow(UIState.LOADING)
     val uiState: StateFlow<UIState> = _uiState.asStateFlow()
 
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
 
     val songs: StateFlow<List<SyncSong>> = repository.getSyncSongsFlow()
-        .combine(_searchQuery) { songs, query ->
-            songs.filter { 
-                it.song.title.contains(query, ignoreCase = true) || 
-                it.song.artist.contains(query, ignoreCase = true) || 
-                it.song.album.contains(query, ignoreCase = true)
-            }
-        }.combine(_sortOrder) { songs, sort ->
+        .combine(_sortOrder) { songs, sort ->
             songs.sortedBy { 
                 if (sort == SortOrder.TITLE) it.song.title.lowercase() else it.song.artist.lowercase()
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val albums: StateFlow<List<Album>> = repository.getAlbumsFlow()
-        .combine(_searchQuery) { albums, query ->
-            albums.filter { 
-                it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true)
-            }.sortedBy { it.title.lowercase() }
+        .map { albums ->
+            albums.sortedBy { it.title.lowercase() }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val downloadQueue: StateFlow<List<AlbumDownloadItem>> = songs
@@ -137,10 +126,6 @@ class MainViewModel(
 
     fun setUnauthenticated() {
         _uiState.value = UIState.UNAUTHENTICATED
-    }
-
-    fun setSearchQuery(query: String) {
-        _searchQuery.value = query
     }
 
     fun setSortOrder(order: SortOrder) {

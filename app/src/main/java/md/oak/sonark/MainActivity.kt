@@ -58,6 +58,7 @@ import md.oak.sonark.navigation.rememberNavigationState
 import md.oak.sonark.navigation.toEntries
 import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
+import md.oak.sonark.ui.SearchViewModel
 import md.oak.sonark.ui.SettingsViewModel
 import md.oak.sonark.ui.components.DownloadQueueBottomSheet
 import md.oak.sonark.ui.screens.AlbumScreen
@@ -121,6 +122,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SonarkTheme {
                 val viewModel: MainViewModel = viewModel { MainViewModel(repository) }
+                val searchViewModel: SearchViewModel = viewModel { SearchViewModel(repository) }
                 val playbackViewModel: PlaybackViewModel = viewModel { PlaybackViewModel(application) }
                 val settingsViewModel: SettingsViewModel = viewModel { SettingsViewModel(settingsRepository) }
                 
@@ -163,7 +165,6 @@ class MainActivity : ComponentActivity() {
 
                 val songs by viewModel.songs.collectAsStateWithLifecycle()
                 val albums by viewModel.albums.collectAsStateWithLifecycle()
-                val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
                 val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
                 val downloadQueue by viewModel.downloadQueue.collectAsStateWithLifecycle()
                 
@@ -272,8 +273,6 @@ class MainActivity : ComponentActivity() {
                                     currentSong = currentSong,
                                     isPlaying = isPlaying,
                                     progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
-                                    searchQuery = searchQuery,
-                                    onSearchQueryChange = { viewModel.setSearchQuery(it) },
                                     sortOrder = sortOrder,
                                     onSortOrderChange = { viewModel.setSortOrder(it) },
                                     onAlbumClick = { album ->
@@ -287,13 +286,21 @@ class MainActivity : ComponentActivity() {
                             }
                             entry<SearchKey> {
                                     SearchScreen(
-                                        viewModel = viewModel,
+                                        viewModel = searchViewModel,
                                         currentSong = currentSong,
                                         isPlaying = isPlaying,
                                         progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                                         onBackClick = { navigator.goBack() },
                                     onSongClick = { song ->
                                         playbackViewModel.playQueue(listOf(song), 0)
+                                    },
+                                    onAlbumClick = { album ->
+                                        navigator.navigate(AlbumKey(album.title))
+                                    },
+                                    onArtistClick = { artistName ->
+                                        // TODO: Implement Artist Screen or filter Library by artist
+                                        navigator.navigate(LibraryKey)
+                                        // For now just go to library, maybe in future we can set a filter
                                     }
                                 )
                             }

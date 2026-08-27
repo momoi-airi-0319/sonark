@@ -56,7 +56,7 @@ class DriveMusicProvider : MusicProvider {
                     name.startsWith("cover.") || name.startsWith("folder.")
                 }
                 val imageUrl = coverFile?.let { "https://www.googleapis.com/drive/v3/files/${it.id}?alt=media" }
-                val coverSize = coverFile?.getSize() ?: 0L
+                val coverSize = coverFile?.size?.toLong() ?: 0L
                 val coverMd5 = coverFile?.md5Checksum
 
                 val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
@@ -90,7 +90,7 @@ class DriveMusicProvider : MusicProvider {
         val headers = getAuthHeaders()
         val existingSize = if (targetFile.exists()) targetFile.length() else 0L
         
-        if (existingSize >= song.size && song.size > 0) return@withContext true
+        if (song.size in 1..existingSize) return@withContext true
 
         val request = Request.Builder()
             .url(song.data)
@@ -241,7 +241,7 @@ class DriveMusicProvider : MusicProvider {
                             data = "https://www.googleapis.com/drive/v3/files/${audioFile.id}?alt=media",
                             albumId = cueFile.id,
                             providerId = id,
-                            size = audioFile.getSize() ?: 0L,
+                            size = audioFile.size.toLong(),
                             md5Hash = audioFile.md5Checksum,
                             startOffset = offsetMs,
                             coverData = imageUrl,
@@ -299,7 +299,7 @@ class DriveMusicProvider : MusicProvider {
             data = "https://www.googleapis.com/drive/v3/files/${file.id}?alt=media",
             albumId = albumId,
             providerId = id,
-            size = file.getSize() ?: 0L,
+            size = file.size.toLong(),
             md5Hash = file.md5Checksum,
             coverData = imageUrl,
             coverSize = coverSize,
