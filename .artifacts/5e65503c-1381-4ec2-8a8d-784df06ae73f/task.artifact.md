@@ -1,0 +1,7 @@
+- [x] Update `Song` and `SongEntity` data models (add `discNumber`, `trackNumber`)
+- [x] Update `SonarkDatabase` version and handle migration (destructive for now)
+- [x] Update `Album` domain model to include `discs` grouping logic
+- [x] Update `DriveMusicProvider` to parse disc and track numbers
+- [x] Update `AlbumScreen` to display disc headers and group songs
+- [x] Update `SongListItem` to display track numbers
+- [x] Update `README.md` with multi-disc organization info

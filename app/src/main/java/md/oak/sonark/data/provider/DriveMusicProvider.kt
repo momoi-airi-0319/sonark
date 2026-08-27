@@ -59,9 +59,11 @@ class DriveMusicProvider : MusicProvider {
                 val coverSize = coverFile?.getSize() ?: 0L
                 val coverMd5 = coverFile?.md5Checksum
 
-                val cueFile = files.find { it.name.endsWith(".cue", ignoreCase = true) }
-                if (cueFile != null) {
-                    songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl, coverSize, coverMd5))
+                val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
+                if (cueFiles.isNotEmpty()) {
+                    cueFiles.forEachIndexed { index, cueFile ->
+                        songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl, coverSize, coverMd5, discNumber = index + 1))
+                    }
                 } else {
                     for (file in files) {
                         if (isAudioFile(file)) {
@@ -181,7 +183,8 @@ class DriveMusicProvider : MusicProvider {
         albumName: String,
         imageUrl: String?,
         coverSize: Long = 0,
-        coverMd5: String? = null
+        coverMd5: String? = null,
+        discNumber: Int = 0
     ): List<SyncSong> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<SyncSong>()
         try {
@@ -222,11 +225,13 @@ class DriveMusicProvider : MusicProvider {
                         val audioFile = currentAudioFile ?: return@forEach
                         
                         val song = Song(
-                            id = "${cueFile.id}_$currentTrackNumber",
+                            id = "${cueFile.id}_${discNumber}_$currentTrackNumber",
                             title = currentTrackTitle,
                             artist = currentTrackArtist,
                             album = albumName,
                             duration = 0,
+                            discNumber = discNumber,
+                            trackNumber = currentTrackNumber.toIntOrNull() ?: 0,
                             imageUrl = imageUrl,
                             type = AlbumType.CUE
                         )
@@ -275,12 +280,7 @@ class DriveMusicProvider : MusicProvider {
     }
 
     private fun parseSong(file: File, albumId: String, albumName: String, imageUrl: String?, coverSize: Long = 0, coverMd5: String? = null): SyncSong {
-        val fileName = file.name.substringBeforeLast(".")
-        val title = if (fileName.contains(" - ")) {
-            fileName.substringAfter(" - ").trim()
-        } else {
-            fileName
-        }
+        val (disc, track, title) = parseFilename(file.name)
 
         val song = Song(
             id = file.id,
@@ -288,6 +288,8 @@ class DriveMusicProvider : MusicProvider {
             artist = "Unknown Artist",
             album = albumName,
             duration = 0,
+            discNumber = disc,
+            trackNumber = track,
             imageUrl = imageUrl,
             type = AlbumType.NORMAL
         )
@@ -303,5 +305,21 @@ class DriveMusicProvider : MusicProvider {
             coverSize = coverSize,
             coverMd5 = coverMd5
         )
+    }
+
+    private fun parseFilename(filename: String): Triple<Int, Int, String> {
+        val cleanName = filename.substringBeforeLast(".")
+        // Match "1-01 - Title" or "1-01. Title" or "1-01 Title"
+        val multiDiscRegex = """^(\d+)-(\d+)\s*[-.]?\s*(.*)$""".toRegex()
+        // Match "01 - Title" or "01. Title" or "01 Title"
+        val singleDiscRegex = """^(\d+)\s*[-.]?\s*(.*)$""".toRegex()
+
+        multiDiscRegex.find(cleanName)?.let { match ->
+            return Triple(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].trim())
+        }
+        singleDiscRegex.find(cleanName)?.let { match ->
+            return Triple(0, match.groupValues[1].toInt(), match.groupValues[2].trim())
+        }
+        return Triple(0, 0, cleanName)
     }
 }

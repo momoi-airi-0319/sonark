@@ -16,8 +16,15 @@ data class Song(
     val artist: String,
     val album: String,
     val duration: Long,
+    val discNumber: Int = 0,
+    val trackNumber: Int = 0,
     val imageUrl: String? = null,
     val type: AlbumType = AlbumType.NORMAL
+)
+
+data class Disc(
+    val discNumber: Int,
+    val songs: List<Song>
 )
 
 /**

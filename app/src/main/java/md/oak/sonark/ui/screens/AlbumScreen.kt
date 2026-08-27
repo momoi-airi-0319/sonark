@@ -76,6 +76,14 @@ fun AlbumScreen(
         )
     }
 
+    val groupedSongs = remember(songs) {
+        songs.groupBy { it.song.discNumber }
+            .toSortedMap()
+    }
+    val showDiscHeaders = remember(groupedSongs) {
+        groupedSongs.size > 1 || (groupedSongs.size == 1 && groupedSongs.firstKey() != 0)
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -115,14 +123,28 @@ fun AlbumScreen(
                 val uiItem = remember(album) { AlbumUiItem.from(album) }
                 uiItem.Header()
             }
-            items(songs, key = { it.song.id }) { syncSong ->
-                SongListItem(
-                    syncSong = syncSong,
-                    isCurrent = syncSong.song.id == currentSong?.song?.id,
-                    isPlaying = isPlaying,
-                    progress = progress,
-                    onClick = { onSongClick(syncSong) }
-                )
+
+            groupedSongs.forEach { (discNumber, discSongs) ->
+                if (showDiscHeaders) {
+                    item(key = "disc_$discNumber") {
+                        Text(
+                            text = if (discNumber == 0) "其他" else "Disc $discNumber",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                items(discSongs.sortedBy { it.song.trackNumber }, key = { it.song.id }) { syncSong ->
+                    SongListItem(
+                        syncSong = syncSong,
+                        isCurrent = syncSong.song.id == currentSong?.song?.id,
+                        isPlaying = isPlaying,
+                        progress = progress,
+                        onClick = { onSongClick(syncSong) }
+                    )
+                }
             }
         }
     }

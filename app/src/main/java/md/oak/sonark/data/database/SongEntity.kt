@@ -29,6 +29,8 @@ data class SongEntity(
     val localPath: String?,
     val startOffset: Long,
     val providerId: String,
+    val discNumber: Int = 0,
+    val trackNumber: Int = 0,
     val size: Long = 0,
     val md5Hash: String? = null,
     val downloadStatus: DownloadStatus = DownloadStatus.NONE,
@@ -40,6 +42,8 @@ data class SongEntity(
         artist = artist,
         album = albumTitle,
         duration = duration,
+        discNumber = discNumber,
+        trackNumber = trackNumber,
         imageUrl = imageUrl,
         type = type
     )
@@ -68,6 +72,8 @@ data class SongEntity(
             localPath = syncSong.localPath,
             startOffset = syncSong.startOffset,
             providerId = syncSong.providerId,
+            discNumber = syncSong.song.discNumber,
+            trackNumber = syncSong.song.trackNumber,
             size = syncSong.size,
             md5Hash = syncSong.md5Hash,
             downloadStatus = syncSong.downloadStatus,
