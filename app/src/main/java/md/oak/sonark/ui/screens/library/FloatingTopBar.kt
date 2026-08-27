@@ -1,0 +1,151 @@
+package md.oak.sonark.ui.screens.library
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.ui.components.CircularWavyProgressIndicator
+
+import androidx.compose.ui.tooling.preview.Preview
+import md.oak.sonark.ui.theme.SonarkTheme
+
+@Composable
+fun FloatingTopBar(
+    currentSong: SyncSong?,
+    isPlaying: Boolean,
+    progress: Float,
+    googleAccountName: String?,
+    onPlayerClick: () -> Unit,
+    onAccountClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Avatar Pill
+        Surface(
+            onClick = onAccountClick,
+            shape = CircleShape,
+            tonalElevation = 6.dp,
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.size(56.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (googleAccountName != null) {
+                            Text(
+                                text = googleAccountName.take(1).uppercase(),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.AccountCircle,
+                                contentDescription = "Profile",
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Playback Status Pill
+        Surface(
+            onClick = onPlayerClick,
+            shape = CircleShape,
+            tonalElevation = 6.dp,
+            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier
+                .height(56.dp)
+                .weight(1f, fill = false)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = if (currentSong != null) 6.dp else 12.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)
+            ) {
+                if (currentSong != null) {
+                    CircularWavyProgressIndicator(
+                        progress = progress,
+                        isPlaying = isPlaying,
+                        imageUrl = currentSong.song.imageUrl,
+                        modifier = Modifier.size(44.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.LibraryMusic,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = currentSong?.song?.title ?: "Sonark",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun FloatingTopBarEmptyPreview() {
+    SonarkTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            FloatingTopBar(
+                currentSong = null,
+                isPlaying = false,
+                progress = 0f,
+                googleAccountName = null,
+                onPlayerClick = {},
+                onAccountClick = {}
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun FloatingTopBarWithAccountPreview() {
+    SonarkTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            FloatingTopBar(
+                currentSong = null,
+                isPlaying = false,
+                progress = 0f,
+                googleAccountName = "Airi",
+                onPlayerClick = {},
+                onAccountClick = {}
+            )
+        }
+    }
+}

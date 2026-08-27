@@ -27,7 +27,7 @@ abstract class SonarkDatabase : RoomDatabase() {
                     SonarkDatabase::class.java,
                     "sonark_database"
                 )
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance
                 instance

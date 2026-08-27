@@ -18,6 +18,10 @@ import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.components.SongListItem
+import androidx.compose.ui.tooling.preview.Preview
+import md.oak.sonark.ui.theme.SonarkTheme
+import md.oak.sonark.data.model.Song
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,13 +37,39 @@ fun SearchScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.songs.collectAsState()
 
+    SearchContent(
+        searchQuery = searchQuery,
+        onSearchQueryChange = { viewModel.setSearchQuery(it) },
+        searchResults = searchResults,
+        currentSong = currentSong,
+        isPlaying = isPlaying,
+        progress = progress,
+        onBackClick = onBackClick,
+        onSongClick = onSongClick,
+        modifier = modifier
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SearchContent(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    searchResults: List<SyncSong>,
+    currentSong: SyncSong?,
+    isPlaying: Boolean,
+    progress: Float,
+    onBackClick: () -> Unit,
+    onSongClick: (SyncSong) -> Unit,
+    modifier: Modifier = Modifier
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     TextField(
                         value = searchQuery,
-                        onValueChange = { viewModel.setSearchQuery(it) },
+                        onValueChange = onSearchQueryChange,
                         placeholder = { Text("Search your music") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = TextFieldDefaults.colors(
@@ -55,7 +85,7 @@ fun SearchScreen(
                                     Icon(Icons.Default.Mic, contentDescription = "Voice Search")
                                 }
                                 if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                                    IconButton(onClick = { onSearchQueryChange("") }) {
                                         Icon(Icons.Default.Close, contentDescription = "Clear")
                                     }
                                 }
@@ -154,5 +184,47 @@ fun SearchResultsList(
                 onClick = { onSongClick(syncSong) }
             )
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SearchScreenPreview() {
+    val songs = listOf(
+        SyncSong(
+            song = Song(
+                id = UUID.randomUUID().toString(),
+                title = "Simple Love",
+                artist = "Jay Chou",
+                album = "Fantasy",
+                duration = 270,
+                trackNumber = 1,
+                discNumber = 1,
+                imageUrl = null
+            ),
+            data = "fileId",
+            albumId = "albumId"
+        )
+    )
+
+    SonarkTheme {
+        SearchContent(
+            searchQuery = "Jay",
+            onSearchQueryChange = {},
+            searchResults = songs,
+            currentSong = null,
+            isPlaying = false,
+            progress = 0f,
+            onBackClick = {},
+            onSongClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SearchSuggestionsPreview() {
+    SonarkTheme {
+        SearchSuggestions()
     }
 }

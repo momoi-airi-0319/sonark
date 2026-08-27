@@ -26,6 +26,12 @@ import md.oak.sonark.data.model.DownloadStatus
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.utils.Formatter
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.tooling.preview.Preview
+import md.oak.sonark.ui.theme.SonarkTheme
+import md.oak.sonark.data.model.Song
+import java.util.UUID
+
 @Composable
 fun SongListItem(
     syncSong: SyncSong,
@@ -120,4 +126,44 @@ fun SongListItem(
             }
         }
     )
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SongListItemPreview() {
+    val song = Song(
+        id = UUID.randomUUID().toString(),
+        title = "Simple Love",
+        artist = "Jay Chou",
+        album = "Fantasy",
+        duration = 270,
+        trackNumber = 1,
+        discNumber = 1,
+        imageUrl = null
+    )
+    val syncSong = SyncSong(
+        song = song,
+        data = "fileId",
+        albumId = "albumId",
+        localPath = "/music/simple_love.mp3"
+    )
+
+    SonarkTheme {
+        Column {
+            SongListItem(
+                syncSong = syncSong,
+                isCurrent = true,
+                isPlaying = true,
+                progress = 0.4f,
+                onClick = {}
+            )
+            SongListItem(
+                syncSong = syncSong.copy(localPath = null),
+                isCurrent = false,
+                isPlaying = false,
+                progress = 0f,
+                onClick = {}
+            )
+        }
+    }
 }

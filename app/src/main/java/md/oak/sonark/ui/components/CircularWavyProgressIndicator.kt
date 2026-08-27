@@ -28,6 +28,11 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.tooling.preview.Preview
+import md.oak.sonark.ui.theme.SonarkTheme
+
 @Composable
 fun CircularWavyProgressIndicator(
     progress: Float,
@@ -130,6 +135,20 @@ fun CircularWavyProgressIndicator(
                     style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun CircularWavyProgressIndicatorPreview() {
+    SonarkTheme {
+        Box(modifier = Modifier.size(200.dp).padding(16.dp)) {
+            CircularWavyProgressIndicator(
+                progress = 0.6f,
+                isPlaying = true,
+                imageUrl = null
+            )
         }
     }
 }

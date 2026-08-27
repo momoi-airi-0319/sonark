@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import md.oak.sonark.ui.model.AlbumDownloadItem
+import androidx.compose.ui.tooling.preview.Preview
+import md.oak.sonark.ui.theme.SonarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -131,6 +133,30 @@ private fun AlbumDownloadTaskItem(item: AlbumDownloadItem) {
                     .padding(start = 72.dp, end = 16.dp, bottom = 8.dp)
                     .fillMaxWidth()
             )
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DownloadQueueBottomSheetPreview() {
+    val queue = listOf(
+        AlbumDownloadItem.Normal(
+            albumId = "1",
+            title = "Fantasy",
+            artist = "Jay Chou",
+            imageUrl = null,
+            progress = 0.5f,
+            totalSongs = 10,
+            downloadingSongs = emptyList(),
+            pendingSongsCount = 5,
+            errorSongsCount = 0,
+            isDownloading = true
+        )
+    )
+    SonarkTheme {
+        Column {
+            AlbumDownloadTaskItem(item = queue[0])
         }
     }
 }

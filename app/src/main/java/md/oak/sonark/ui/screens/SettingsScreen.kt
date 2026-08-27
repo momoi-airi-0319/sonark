@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import md.oak.sonark.ui.SettingsViewModel
+import androidx.compose.ui.tooling.preview.Preview
+import md.oak.sonark.ui.theme.SonarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,6 +31,22 @@ fun SettingsScreen(
 ) {
     val googleAccountName by viewModel.googleAccountName.collectAsStateWithLifecycle()
 
+    SettingsContent(
+        googleAccountName = googleAccountName,
+        onConnectClick = onConnectClick,
+        onBackClick = onBackClick,
+        modifier = modifier
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsContent(
+    googleAccountName: String?,
+    onConnectClick: () -> Unit,
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -163,5 +181,17 @@ fun SettingsInfoItem(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SettingsScreenPreview() {
+    SonarkTheme {
+        SettingsContent(
+            googleAccountName = "airi@example.com",
+            onConnectClick = {},
+            onBackClick = {}
+        )
     }
 }

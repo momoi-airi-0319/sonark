@@ -22,6 +22,12 @@ import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.components.WavySlider
 import md.oak.sonark.ui.utils.Formatter
 
+import androidx.compose.ui.tooling.preview.Preview
+import md.oak.sonark.ui.components.MetadataItem
+import md.oak.sonark.ui.theme.SonarkTheme
+import md.oak.sonark.data.model.Song
+import java.util.UUID
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
@@ -267,21 +273,42 @@ private fun SongDetailsDialog(
     )
 }
 
+@Preview(showBackground = true)
 @Composable
-private fun MetadataItem(
-    label: String,
-    value: String
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium
+fun PlayerScreenPreview() {
+    val song = Song(
+        id = UUID.randomUUID().toString(),
+        title = "Simple Love",
+        artist = "Jay Chou",
+        album = "Fantasy",
+        duration = 270,
+        trackNumber = 1,
+        discNumber = 1,
+        imageUrl = null
+    )
+    val syncSong = SyncSong(
+        song = song,
+        data = "fileId",
+        albumId = "albumId",
+        localPath = null
+    )
+
+    SonarkTheme {
+        PlayerScreen(
+            song = syncSong,
+            isPlaying = true,
+            progress = 120000,
+            duration = 270000,
+            shuffleEnabled = false,
+            repeatMode = Player.REPEAT_MODE_OFF,
+            onTogglePlayback = {},
+            onSeekTo = {},
+            onSkipNext = {},
+            onSkipPrevious = {},
+            onToggleShuffle = {},
+            onToggleRepeatMode = {},
+            onBackClick = {},
+            onAlbumClick = {}
         )
     }
 }

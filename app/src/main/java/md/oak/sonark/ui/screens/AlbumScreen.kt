@@ -27,14 +27,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.Album
+import md.oak.sonark.data.model.Song
 import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.ui.components.MetadataItem
 import md.oak.sonark.ui.components.SongListItem
 import md.oak.sonark.ui.model.AlbumUiItem
+import md.oak.sonark.ui.theme.SonarkTheme
 import md.oak.sonark.ui.utils.Formatter
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,18 +190,46 @@ private fun AlbumDetailsDialog(
     )
 }
 
+@Preview(showBackground = true)
 @Composable
-private fun MetadataItem(label: String, value: String) {
-    Column {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary
+fun AlbumScreenPreview() {
+    val album = Album.Normal(
+        title = "Fantasy",
+        artist = "Jay Chou",
+        localPath = "/music/jay",
+        imageUrl = null,
+        songs = emptyList()
+    )
+    val song = Song(
+        id = UUID.randomUUID().toString(),
+        title = "Simple Love",
+        artist = "Jay Chou",
+        album = "Fantasy",
+        duration = 270,
+        trackNumber = 1,
+        discNumber = 1,
+        imageUrl = null
+    )
+    val syncSongs = listOf(
+        SyncSong(
+            song = song,
+            data = "fileId",
+            albumId = "albumId",
+            localPath = null
         )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium
+    )
+
+    SonarkTheme {
+        AlbumScreen(
+            album = album,
+            songs = syncSongs,
+            currentSong = null,
+            isPlaying = false,
+            progress = 0f,
+            onSongClick = {},
+            onBackClick = {},
+            onLoadMetadata = {},
+            onDownloadSongs = {}
         )
     }
 }
