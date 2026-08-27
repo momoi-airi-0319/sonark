@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
@@ -20,6 +21,13 @@ sealed class AlbumUiItem {
 
     @Composable
     fun GridItem(onClick: () -> Unit) {
+        val displayArtist = remember(album.artist) {
+            if (album.artist.isBlank() || album.artist.equals("Unknown Artist", ignoreCase = true)) {
+                "Various Artists"
+            } else {
+                album.artist
+            }
+        }
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -35,12 +43,26 @@ sealed class AlbumUiItem {
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
+                Text(
+                    text = displayArtist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
             }
         }
     }
 
     @Composable
     fun ListItem(onClick: () -> Unit) {
+        val displayArtist = remember(album.artist) {
+            if (album.artist.isBlank() || album.artist.equals("Unknown Artist", ignoreCase = true)) {
+                "Various Artists"
+            } else {
+                album.artist
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -58,7 +80,7 @@ sealed class AlbumUiItem {
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 Text(
-                    text = album.artist,
+                    text = displayArtist,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

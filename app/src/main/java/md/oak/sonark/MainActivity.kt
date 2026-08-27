@@ -61,6 +61,7 @@ import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SearchViewModel
 import md.oak.sonark.ui.SettingsViewModel
 import md.oak.sonark.ui.components.DownloadQueueBottomSheet
+import md.oak.sonark.ui.components.FloatingNavItem
 import md.oak.sonark.ui.screens.AlbumScreen
 import md.oak.sonark.ui.screens.LibraryScreen
 import md.oak.sonark.ui.screens.PlayerScreen
@@ -217,12 +218,11 @@ class MainActivity : ComponentActivity() {
                                 Surface(
                                     shape = CircleShape,
                                     tonalElevation = 6.dp,
-                                    shadowElevation = 8.dp,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    modifier = Modifier.height(64.dp)
+                                    shadowElevation = 2.dp,
+                                    modifier = Modifier.height(52.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         FloatingNavItem(
@@ -239,14 +239,13 @@ class MainActivity : ComponentActivity() {
                                 Surface(
                                     shape = CircleShape,
                                     tonalElevation = 6.dp,
-                                    shadowElevation = 8.dp,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    modifier = Modifier.size(64.dp)
+                                    shadowElevation = 2.dp,
+                                    modifier = Modifier.size(52.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         IconButton(
                                             onClick = { navigator.navigate(SearchKey) },
-                                            modifier = Modifier.size(48.dp)
+                                            modifier = Modifier.size(52.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Search,
@@ -393,38 +392,3 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-fun FloatingNavItem(
-    selected: Boolean,
-    onClick: () -> Unit,
-    icon: ImageVector,
-    label: String
-) {
-    Surface(
-        modifier = Modifier
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (selected) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}

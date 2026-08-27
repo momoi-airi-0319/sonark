@@ -40,8 +40,7 @@ fun FloatingTopBar(
             onClick = onAccountClick,
             shape = CircleShape,
             tonalElevation = 6.dp,
-            shadowElevation = 8.dp,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 2.dp,
             modifier = Modifier.size(56.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
@@ -76,8 +75,7 @@ fun FloatingTopBar(
             onClick = onPlayerClick,
             shape = CircleShape,
             tonalElevation = 6.dp,
-            shadowElevation = 8.dp,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 2.dp,
             modifier = Modifier
                 .height(56.dp)
                 .weight(1f, fill = false)
