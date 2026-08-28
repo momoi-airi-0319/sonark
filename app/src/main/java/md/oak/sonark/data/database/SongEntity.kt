@@ -49,14 +49,14 @@ data class SongEntity(
     )
 
     fun toSyncSong(albumTitle: String, imageUrl: String?, type: AlbumType) = SyncSong(
-        song = toSong(albumTitle, imageUrl, type),
+        song = toSong(albumTitle = albumTitle, imageUrl = imageUrl, type = type),
         data = data,
         albumId = albumId,
-        localPath = localPath,
-        startOffset = startOffset,
         providerId = providerId,
         size = size,
         md5Hash = md5Hash,
+        localPath = localPath,
+        startOffset = startOffset,
         downloadStatus = downloadStatus,
         downloadProgress = downloadProgress
     )

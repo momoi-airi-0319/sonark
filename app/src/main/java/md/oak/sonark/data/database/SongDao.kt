@@ -24,8 +24,11 @@ interface SongDao {
     @Query("DELETE FROM songs WHERE id NOT IN (:ids)")
     suspend fun deleteSongsNotIn(ids: List<String>)
 
-    @Query("SELECT * FROM songs WHERE downloadStatus = 'PENDING' OR downloadStatus = 'DOWNLOADING'")
+    @Query("SELECT * FROM songs WHERE downloadStatus IN ('PENDING', 'ERROR')")
     fun getSongsToDownloadFlow(): Flow<List<SongEntity>>
+
+    @Query("UPDATE songs SET downloadStatus = 'PENDING' WHERE downloadStatus = 'DOWNLOADING'")
+    suspend fun resetAllDownloadingStatus()
 
     @Query("UPDATE songs SET downloadStatus = :status, downloadProgress = :progress WHERE data = :dataUrl")
     suspend fun updateDownloadStatusByUrl(dataUrl: String, status: DownloadStatus, progress: Int)

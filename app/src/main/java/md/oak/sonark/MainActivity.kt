@@ -1,5 +1,6 @@
 package md.oak.sonark
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -27,6 +28,7 @@ import coil.intercept.Interceptor
 import md.oak.sonark.auth.AuthManager
 import md.oak.sonark.data.Dependencies
 import md.oak.sonark.navigation.*
+import md.oak.sonark.playback.PlaybackService
 import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SearchViewModel
@@ -38,14 +40,16 @@ import md.oak.sonark.ui.theme.SonarkTheme
 class MainActivity : ComponentActivity() {
 
     private lateinit var authManager: AuthManager
+    private val intentState = mutableStateOf<Intent?>(null)
 
-    @OptIn(androidx.media3.common.util.UnstableApi::class)
+    @androidx.media3.common.util.UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         Dependencies.init(applicationContext)
         authManager = AuthManager(this)
+        intentState.value = intent
         
         setupCoil()
 
@@ -89,6 +93,15 @@ class MainActivity : ComponentActivity() {
                 
                 var showQueue by remember { mutableStateOf(false) }
 
+                LaunchedEffect(intentState.value) {
+                    val currentIntent = intentState.value
+                    Log.d("MainActivity", "handleIntent: action=${currentIntent?.action}")
+                    if (currentIntent?.action == PlaybackService.ACTION_SHOW_PLAYER) {
+                        navigator.navigate(PlayerKey)
+                        currentIntent.action = null // Clear action
+                    }
+                }
+
                 LaunchedEffect(Unit) {
                     val lastAccount = authManager.getLastSignedInAccount()
                     if (lastAccount != null) {
@@ -119,16 +132,19 @@ class MainActivity : ComponentActivity() {
                 )
 
                 Scaffold(
-                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                    bottomBar = {
-                        SonarkBottomBar(navigationState, navigator)
-                    }
-                ) { innerPadding ->
-                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0)
+                ) { padding ->
+                    Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                         NavDisplay(
                             entries = navigationState.toEntries(myEntryProvider),
                             onBack = { navigator.goBack() }
                         )
+                        
+                        Box(
+                            modifier = Modifier.align(Alignment.BottomCenter)
+                        ) {
+                            SonarkBottomBar(navigationState, navigator)
+                        }
                     }
 
                     if (showQueue) {
@@ -140,6 +156,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    @androidx.media3.common.util.UnstableApi
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intentState.value = intent
     }
 
     private fun setupCoil() {

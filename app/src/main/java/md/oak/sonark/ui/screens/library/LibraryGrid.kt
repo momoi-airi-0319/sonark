@@ -30,7 +30,7 @@ fun LibraryGrid(
     albums: List<Album>,
     onAlbumClick: (Album) -> Unit,
     onRefresh: () -> Unit,
-    contentPadding: PaddingValues = PaddingValues(start = 16.dp, top = 160.dp, end = 16.dp, bottom = 160.dp)
+    contentPadding: PaddingValues
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState) {
@@ -73,10 +73,10 @@ fun LibraryGrid(
                     )
                 } else {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 160.dp),
+                        columns = GridCells.Adaptive(minSize = 150.dp),
                         contentPadding = contentPadding,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(albums, key = { it.title }) { album ->
@@ -98,7 +98,8 @@ fun LibraryGridLoadingPreview() {
             uiState = UIState.LOADING,
             albums = emptyList(),
             onAlbumClick = {},
-            onRefresh = {}
+            onRefresh = {},
+            contentPadding = PaddingValues(0.dp)
         )
     }
 }
@@ -111,7 +112,8 @@ fun LibraryGridErrorPreview() {
             uiState = UIState.ERROR,
             albums = emptyList(),
             onAlbumClick = {},
-            onRefresh = {}
+            onRefresh = {},
+            contentPadding = PaddingValues(0.dp)
         )
     }
 }

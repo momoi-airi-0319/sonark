@@ -65,12 +65,21 @@ fun LibraryScreen(
         modifier = modifier,
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { padding ->
+        val topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 72.dp + 24.dp
+        val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 132.dp + 24.dp
+
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             LibraryGrid(
                 uiState = uiState,
                 albums = albums,
                 onAlbumClick = onAlbumClick,
-                onRefresh = onRefresh
+                onRefresh = onRefresh,
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    top = topPadding,
+                    end = 16.dp,
+                    bottom = bottomPadding
+                )
             )
 
             FloatingTopBar(
@@ -144,7 +153,7 @@ private fun LibrarySubNavigation(
     Box(
         modifier = modifier
             .navigationBarsPadding()
-            .padding(bottom = 68.dp + 12.dp) // Positioned above the main nav bar
+            .padding(bottom = 68.dp + 12.dp) // Stacks 12dp above the main floating bottom bar (52dp + 16dp)
     ) {
         Surface(
             shape = androidx.compose.foundation.shape.CircleShape,

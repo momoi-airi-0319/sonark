@@ -28,29 +28,26 @@ sealed class AlbumUiItem {
                 album.artist
             }
         }
-        Card(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onClick() },
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                .clickable { onClick() }
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                AlbumImage(modifier = Modifier.aspectRatio(1f).fillMaxWidth())
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = album.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-                Text(
-                    text = displayArtist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-            }
+            AlbumImage(modifier = Modifier.aspectRatio(1f).fillMaxWidth())
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = album.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                text = displayArtist,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
     }
 

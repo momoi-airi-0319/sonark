@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import md.oak.sonark.data.Utils
 import md.oak.sonark.data.model.SyncSong
 
 sealed class AlbumDownloadItem {
@@ -39,7 +40,7 @@ sealed class AlbumDownloadItem {
         override fun DetailContent(modifier: Modifier) {
             Column(modifier = modifier) {
                 downloadingSongs.forEach { syncSong ->
-                    SongProgressItem(syncSong.song.title, syncSong.downloadProgress)
+                    SongProgressItem("${syncSong.song.trackNumber}. ${syncSong.song.title}", syncSong.size, syncSong.downloadProgress)
                 }
                 SummaryInfo()
             }
@@ -63,7 +64,8 @@ sealed class AlbumDownloadItem {
             Column(modifier = modifier) {
                 if (downloadingSongs.isNotEmpty()) {
                     // CUE only shows one progress for the whole disc file
-                    SongProgressItem("Disc Audio File", downloadingSongs.first().downloadProgress)
+                    val first = downloadingSongs.first()
+                    SongProgressItem("Disc Audio File", first.size, first.downloadProgress)
                 }
                 SummaryInfo()
             }
@@ -91,7 +93,7 @@ sealed class AlbumDownloadItem {
     }
 
     @Composable
-    protected fun SongProgressItem(title: String, progress: Int) {
+    protected fun SongProgressItem(title: String, size: Long, progress: Int) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -99,12 +101,24 @@ sealed class AlbumDownloadItem {
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = Utils.formatSize(size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
                 LinearProgressIndicator(
                     progress = { progress / 100f },
                     modifier = Modifier
