@@ -49,59 +49,62 @@ class MainViewModel(
 
     val downloadQueue: StateFlow<List<AlbumDownloadItem>> = songs
         .map { allSyncSongs ->
-            allSyncSongs.groupBy { it.albumId }.mapNotNull { (albumId, albumSyncSongs) ->
-                val activeSyncSongs = albumSyncSongs.filter { 
-                    it.downloadStatus != DownloadStatus.COMPLETED && it.downloadStatus != DownloadStatus.NONE 
-                }
-                if (activeSyncSongs.isEmpty()) return@mapNotNull null
-                
-                val first = albumSyncSongs.first()
-                
-                // Group by file (data URL) to calculate real progress based on all files in the album
-                val uniqueFiles = albumSyncSongs.groupBy { it.data }.values.map { it.first() }
-                val totalProgress = if (uniqueFiles.isNotEmpty()) {
-                    val completedSum = uniqueFiles.sumOf { 
-                        if (it.downloadStatus == DownloadStatus.COMPLETED) 100 else it.downloadProgress
-                    }
-                    completedSum.toFloat() / (uniqueFiles.size * 100f)
-                } else 0f
-
-                val downloading = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.DOWNLOADING }
-                val uniqueDownloading = downloading.distinctBy { it.data }
-                
-                val pending = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.PENDING }
-                val error = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.ERROR }
-
-                if (first.song.type == AlbumType.CUE) {
-                    AlbumDownloadItem.Cue(
-                        albumId = albumId,
-                        title = first.song.album,
-                        artist = first.song.artist,
-                        imageUrl = first.song.imageUrl,
-                        progress = totalProgress,
-                        totalSongs = albumSyncSongs.size,
-                        downloadingSongs = uniqueDownloading,
-                        pendingSongsCount = pending.size,
-                        errorSongsCount = error.size,
-                        isDownloading = downloading.isNotEmpty()
-                    )
-                } else {
-                    AlbumDownloadItem.Normal(
-                        albumId = albumId,
-                        title = first.song.album,
-                        artist = first.song.artist,
-                        imageUrl = first.song.imageUrl,
-                        progress = totalProgress,
-                        totalSongs = albumSyncSongs.size,
-                        downloadingSongs = uniqueDownloading,
-                        pendingSongsCount = pending.size,
-                        errorSongsCount = error.size,
-                        isDownloading = downloading.isNotEmpty()
-                    )
-                }
-            }.sortedBy { it.title.lowercase() }
+            allSyncSongs.groupBy { it.albumId }
+                .mapNotNull { (albumId, albumSyncSongs) -> createAlbumDownloadItem(albumId, albumSyncSongs) }
+                .sortedBy { it.title.lowercase() }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private fun createAlbumDownloadItem(albumId: String, albumSyncSongs: List<SyncSong>): AlbumDownloadItem? {
+        val activeSyncSongs = albumSyncSongs.filter { 
+            it.downloadStatus != DownloadStatus.COMPLETED && it.downloadStatus != DownloadStatus.NONE 
+        }
+        if (activeSyncSongs.isEmpty()) return null
+        
+        val first = albumSyncSongs.first()
+        val uniqueFiles = albumSyncSongs.distinctBy { it.data }
+        
+        val totalProgress = if (uniqueFiles.isNotEmpty()) {
+            val completedSum = uniqueFiles.sumOf { 
+                if (it.downloadStatus == DownloadStatus.COMPLETED) 100 else it.downloadProgress
+            }
+            completedSum.toFloat() / (uniqueFiles.size * 100f)
+        } else 0f
+
+        val downloading = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.DOWNLOADING }
+        val uniqueDownloading = downloading.distinctBy { it.data }
+        
+        val pending = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.PENDING }
+        val error = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.ERROR }
+
+        return if (first.song.type == AlbumType.CUE) {
+            AlbumDownloadItem.Cue(
+                albumId = albumId,
+                title = first.song.album,
+                artist = first.song.artist,
+                imageUrl = first.song.imageUrl,
+                progress = totalProgress,
+                totalSongs = albumSyncSongs.size,
+                downloadingSongs = uniqueDownloading,
+                pendingSongsCount = pending.size,
+                errorSongsCount = error.size,
+                isDownloading = downloading.isNotEmpty()
+            )
+        } else {
+            AlbumDownloadItem.Normal(
+                albumId = albumId,
+                title = first.song.album,
+                artist = first.song.artist,
+                imageUrl = first.song.imageUrl,
+                progress = totalProgress,
+                totalSongs = albumSyncSongs.size,
+                downloadingSongs = uniqueDownloading,
+                pendingSongsCount = pending.size,
+                errorSongsCount = error.size,
+                isDownloading = downloading.isNotEmpty()
+            )
+        }
+    }
 
     init {
         loadSongs()
@@ -119,7 +122,6 @@ class MainViewModel(
             if (albums.value.isEmpty()) {
                 _uiState.value = UIState.LOADING
             }
-            // Refresh account info first and independently
             refreshAccountInfo()
             
             try {
@@ -136,24 +138,32 @@ class MainViewModel(
     fun refreshAccountInfo() {
         viewModelScope.launch {
             val provider = repository.getProvider("google_drive") as? md.oak.sonark.data.provider.DriveMusicProvider
-            provider?.let {
-                val driveService = try {
-                    val cred = it.credential
-                    if (cred != null) {
-                        com.google.api.services.drive.Drive.Builder(
-                            com.google.api.client.http.javanet.NetHttpTransport(),
-                            com.google.api.client.json.gson.GsonFactory.getDefaultInstance(),
-                            cred
-                        ).setApplicationName("Sonark").build()
-                    } else null
-                } catch (_: Exception) { null }
-                accountRepository.refreshQuota(driveService)
-            }
+            val driveService = provider?.let { createDriveService(it) }
+            accountRepository.refreshQuota(driveService)
         }
+    }
+
+    private fun createDriveService(provider: md.oak.sonark.data.provider.DriveMusicProvider): com.google.api.services.drive.Drive? {
+        return try {
+            provider.credential?.let { cred ->
+                com.google.api.services.drive.Drive.Builder(
+                    com.google.api.client.http.javanet.NetHttpTransport(),
+                    com.google.api.client.json.gson.GsonFactory.getDefaultInstance(),
+                    cred
+                ).setApplicationName("Sonark").build()
+            }
+        } catch (_: Exception) { null }
     }
 
     fun setUnauthenticated() {
         _uiState.value = UIState.UNAUTHENTICATED
+    }
+
+    fun setGuestMode(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setGuestMode(enabled)
+            loadSongs()
+        }
     }
 
     fun setSortOrder(order: SortOrder) {

@@ -22,62 +22,8 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        
-        val httpDataSourceFactory = DataSource.Factory {
-            val dataSource = DefaultHttpDataSource.Factory()
-                .setUserAgent("Sonark")
-                .setAllowCrossProtocolRedirects(true)
-                .createDataSource()
-            
-            object : DataSource by dataSource {
-                override fun open(dataSpec: DataSpec): Long {
-                    // In a multi-provider setup, we might need the song ID to know which headers to use.
-                    // But Media3's DataSource doesn't easily give us the MediaItem here.
-                    // For now, we'll try Google Drive headers if the URL matches.
-                    val url = dataSpec.uri.toString()
-                    val headers = if (url.contains("googleapis.com")) {
-                        Dependencies.driveProvider.getAuthHeaders()
-                    } else {
-                        emptyMap()
-                    }
-                    
-                    val authorizedDataSpec = if (headers.isNotEmpty()) {
-                        dataSpec.buildUpon()
-                            .setHttpRequestHeaders(headers)
-                            .build()
-                    } else {
-                        dataSpec
-                    }
-                    return dataSource.open(authorizedDataSpec)
-                }
-            }
-        }
-
-        val dataSourceFactory = DefaultDataSource.Factory(this, httpDataSourceFactory)
-
-        val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSourceFactory))
-            .build()
-        
-        player.addListener(object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                Log.e("PlaybackService", "Player error: ${error.message}", error)
-            }
-        })
-        
-        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 
-            0, 
-            intent, 
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        mediaSession = MediaSession.Builder(this, player)
-            .setSessionActivity(pendingIntent)
-            .build()
+        val player = createPlayer()
+        mediaSession = createMediaSession(player)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -85,11 +31,9 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player
-        if (player != null) {
-            if (!player.playWhenReady || player.mediaItemCount == 0) {
-                stopSelf()
-            }
+        val player = mediaSession?.player ?: return
+        if (!player.playWhenReady || player.mediaItemCount == 0) {
+            stopSelf()
         }
     }
 
@@ -97,8 +41,84 @@ class PlaybackService : MediaSessionService() {
         mediaSession?.run {
             player.release()
             release()
-            mediaSession = null
         }
+        mediaSession = null
         super.onDestroy()
+    }
+
+    private fun createPlayer(): ExoPlayer {
+        val dataSourceFactory = DefaultDataSource.Factory(
+            this,
+            SonarkDataSourceFactory()
+        )
+
+        return ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(this).setDataSourceFactory(dataSourceFactory))
+            .build().apply {
+                addListener(PlayerListener())
+            }
+    }
+
+    private fun createMediaSession(player: Player): MediaSession {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        return MediaSession.Builder(this, player)
+            .setSessionActivity(pendingIntent)
+            .build()
+    }
+
+    private class PlayerListener : Player.Listener {
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(TAG, "Player error [${error.errorCodeName}]: ${error.message}", error)
+        }
+    }
+
+    companion object {
+        private const val TAG = "PlaybackService"
+    }
+}
+
+@UnstableApi
+private class SonarkDataSourceFactory : DataSource.Factory {
+    override fun createDataSource(): DataSource {
+        val httpDataSource = DefaultHttpDataSource.Factory()
+            .setUserAgent("Sonark")
+            .setAllowCrossProtocolRedirects(true)
+            .createDataSource()
+        return SonarkDataSource(httpDataSource)
+    }
+}
+
+@UnstableApi
+private class SonarkDataSource(
+    private val baseDataSource: DataSource
+) : DataSource by baseDataSource {
+    override fun open(dataSpec: DataSpec): Long {
+        val url = dataSpec.uri.toString()
+        val headers = getHeadersForUrl(url)
+
+        val authorizedDataSpec = if (headers.isNotEmpty()) {
+            dataSpec.buildUpon()
+                .setHttpRequestHeaders(headers)
+                .build()
+        } else {
+            dataSpec
+        }
+        return baseDataSource.open(authorizedDataSpec)
+    }
+
+    private fun getHeadersForUrl(url: String): Map<String, String> {
+        return when {
+            url.contains("googleapis.com") -> Dependencies.driveProvider.getAuthHeaders()
+            else -> emptyMap()
+        }
     }
 }

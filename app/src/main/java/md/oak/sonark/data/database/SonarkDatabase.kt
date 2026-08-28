@@ -20,18 +20,16 @@ abstract class SonarkDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: SonarkDatabase? = null
 
-        fun getDatabase(context: Context): SonarkDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
+        fun getDatabase(context: Context): SonarkDatabase =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     SonarkDatabase::class.java,
                     "sonark_database"
                 )
-                    .fallbackToDestructiveMigration(true)
-                    .build()
-                INSTANCE = instance
-                instance
+                .fallbackToDestructiveMigration(true)
+                .build()
+                .also { INSTANCE = it }
             }
-        }
     }
 }

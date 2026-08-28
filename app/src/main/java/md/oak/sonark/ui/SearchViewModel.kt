@@ -25,35 +25,20 @@ class SearchViewModel(
         repository.getAlbumsFlow(),
         _searchQuery
     ) { songs, albums, query ->
-        if (query.isBlank()) {
-            SearchUiState()
-        } else {
-            val filteredSongs = songs.filter {
-                it.song.title.contains(query, ignoreCase = true)
-            }.sortedBy { it.song.title.lowercase() }
+        if (query.isBlank()) return@combine SearchUiState()
 
-            val filteredAlbums = albums.filter {
-                it.title.contains(query, ignoreCase = true)
-            }.sortedBy { it.title.lowercase() }
+        val filteredSongs = songs.filter { it.song.title.contains(query, ignoreCase = true) }
+            .sortedBy { it.song.title.lowercase() }
 
-            val artistsFromSongs = songs.filter {
-                it.song.artist.contains(query, ignoreCase = true)
-            }.map { it.song.artist }
+        val filteredAlbums = albums.filter { it.title.contains(query, ignoreCase = true) }
+            .sortedBy { it.title.lowercase() }
 
-            val artistsFromAlbums = albums.filter {
-                it.artist.contains(query, ignoreCase = true)
-            }.map { it.artist }
+        val filteredArtists = (songs.map { it.song.artist } + albums.map { it.artist })
+            .filter { it.contains(query, ignoreCase = true) }
+            .distinct()
+            .sortedBy { it.lowercase() }
 
-            val filteredArtists = (artistsFromSongs + artistsFromAlbums)
-                .distinct()
-                .sortedBy { it.lowercase() }
-
-            SearchUiState(
-                songs = filteredSongs,
-                albums = filteredAlbums,
-                artists = filteredArtists
-            )
-        }
+        SearchUiState(filteredSongs, filteredAlbums, filteredArtists)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),

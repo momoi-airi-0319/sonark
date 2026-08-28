@@ -83,35 +83,11 @@ fun LibraryScreen(
                 onAccountClick = { showAccountDialog = true }
             )
 
-            // Library Sub-navigation Bar
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 68.dp + 12.dp) // Positioned above the main nav bar
-            ) {
-                Surface(
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    tonalElevation = 6.dp,
-                    shadowElevation = 2.dp,
-                    modifier = Modifier.height(52.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LibraryTab.entries.forEach { tab ->
-                            FloatingNavItem(
-                                selected = selectedTab == tab,
-                                onClick = { selectedTab = tab },
-                                icon = tab.icon,
-                                label = tab.label,
-                                horizontalPadding = 12.dp
-                            )
-                        }
-                    }
-                }
-            }
+            LibrarySubNavigation(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 
@@ -156,6 +132,41 @@ fun LibraryScreen(
             onUrlClick = onUrlClick,
             onDismissRequest = { showAccountDialog = false }
         )
+    }
+}
+
+@Composable
+private fun LibrarySubNavigation(
+    selectedTab: LibraryTab,
+    onTabSelected: (LibraryTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .navigationBarsPadding()
+            .padding(bottom = 68.dp + 12.dp) // Positioned above the main nav bar
+    ) {
+        Surface(
+            shape = androidx.compose.foundation.shape.CircleShape,
+            tonalElevation = 6.dp,
+            shadowElevation = 2.dp,
+            modifier = Modifier.height(52.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LibraryTab.entries.forEach { tab ->
+                    FloatingNavItem(
+                        selected = selectedTab == tab,
+                        onClick = { onTabSelected(tab) },
+                        icon = tab.icon,
+                        label = tab.label,
+                        horizontalPadding = 12.dp
+                    )
+                }
+            }
+        }
     }
 }
 

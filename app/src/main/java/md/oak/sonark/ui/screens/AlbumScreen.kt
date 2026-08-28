@@ -120,7 +120,9 @@ fun AlbumScreen(
         modifier = modifier
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
             item {
@@ -131,16 +133,14 @@ fun AlbumScreen(
             groupedSongs.forEach { (discNumber, discSongs) ->
                 if (showDiscHeaders) {
                     item(key = "disc_$discNumber") {
-                        Text(
-                            text = if (discNumber == 0) "其他" else "Disc $discNumber",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        DiscHeader(discNumber)
                     }
                 }
 
-                items(discSongs.sortedBy { it.song.trackNumber }, key = { it.song.id }) { syncSong ->
+                items(
+                    items = discSongs.sortedBy { it.song.trackNumber },
+                    key = { it.song.id }
+                ) { syncSong ->
                     SongListItem(
                         syncSong = syncSong,
                         isCurrent = syncSong.song.id == currentSong?.song?.id,
@@ -152,6 +152,19 @@ fun AlbumScreen(
             }
         }
     }
+}
+
+@Composable
+private fun DiscHeader(
+    discNumber: Int,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = if (discNumber == 0) "其他" else "Disc $discNumber",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.primary
+    )
 }
 
 @Composable

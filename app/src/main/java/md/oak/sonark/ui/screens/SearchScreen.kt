@@ -132,13 +132,7 @@ fun SearchContent(
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
             if (searchQuery.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "Try searching for music",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                EmptySearchState()
             } else {
                 SearchResultsList(
                     uiState = uiState,
@@ -151,6 +145,17 @@ fun SearchContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun EmptySearchState() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = "Try searching for music",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -195,20 +200,25 @@ fun SearchResultsList(
 
         if (uiState.songs.isEmpty() && uiState.albums.isEmpty() && uiState.artists.isEmpty()) {
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No results found",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                NoResultsFoundState()
             }
         }
+    }
+}
+
+@Composable
+private fun NoResultsFoundState() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "No results found",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

@@ -28,147 +28,110 @@ class DownloadManager(
     private val downloadSemaphore = Semaphore(6)
 
     fun start() {
-        startSongDownloads()
-        startAlbumDownloads()
+        observeSongDownloads()
+        observeAlbumDownloads()
     }
 
-    private fun startSongDownloads() {
-        scope.launch {
-            songDao.getSongsToDownloadFlow().collect { entities ->
-                val uniqueFiles = entities
-                    .filter { it.downloadStatus == DownloadStatus.PENDING }
-                    .groupBy { it.data }
-                    .values
-                    .map { it.first() }
-                    .sortedBy { it.size }
-
-                uniqueFiles.forEach { entity ->
-                    if (activeDownloads.add(entity.data)) {
-                        scope.launch {
-                            try {
-                                downloadSemaphore.withPermit {
-                                    try {
-                                        downloadWithRetry(3) { downloadSong(entity) }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                        songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.ERROR, 0)
-                                    }
-                                }
-                            } finally {
-                                activeDownloads.remove(entity.data)
-                            }
-                        }
+    private fun observeSongDownloads() = scope.launch {
+        songDao.getSongsToDownloadFlow().collect { entities ->
+            entities.filter { it.downloadStatus == DownloadStatus.PENDING }
+                .distinctBy { it.data }
+                .sortedBy { it.size }
+                .forEach { entity ->
+                    processDownload(entity.data) {
+                        downloadSong(entity)
                     }
+                }
+        }
+    }
+
+    private fun observeAlbumDownloads() = scope.launch {
+        albumDao.getAlbumsToDownloadFlow().collect { entities ->
+            entities.forEach { entity ->
+                val url = entity.imageUrl ?: return@forEach
+                processDownload(url) {
+                    downloadAlbumCover(entity)
                 }
             }
         }
     }
 
-    private fun startAlbumDownloads() {
+    private fun processDownload(url: String, block: suspend () -> Unit) {
+        if (!activeDownloads.add(url)) return
+        
         scope.launch {
-            albumDao.getAlbumsToDownloadFlow().collect { entities ->
-                entities.forEach { entity ->
-                    val url = entity.imageUrl ?: return@forEach
-                    if (activeDownloads.add(url)) {
-                        scope.launch {
-                            try {
-                                downloadSemaphore.withPermit {
-                                    try {
-                                        downloadWithRetry(3) { downloadAlbumCover(entity) }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                        albumDao.updateDownloadStatusByUrl(url, DownloadStatus.ERROR, 0)
-                                    }
-                                }
-                            } finally {
-                                activeDownloads.remove(url)
-                            }
-                        }
-                    }
+            try {
+                downloadSemaphore.withPermit {
+                    downloadWithRetry(maxAttempts = 3, block = block)
                 }
+            } catch (e: Exception) {
+                handleDownloadError(url, e)
+            } finally {
+                activeDownloads.remove(url)
             }
         }
+    }
+
+    private suspend fun handleDownloadError(url: String, e: Exception) {
+        e.printStackTrace()
+        songDao.updateDownloadStatusByUrl(url, DownloadStatus.ERROR, 0)
+        albumDao.updateDownloadStatusByUrl(url, DownloadStatus.ERROR, 0)
     }
 
     private suspend fun downloadWithRetry(maxAttempts: Int, block: suspend () -> Unit) {
-        var attempt = 0
-        while (attempt < maxAttempts) {
+        repeat(maxAttempts) { attempt ->
             try {
                 block()
                 return
             } catch (e: Exception) {
-                attempt++
-                if (attempt >= maxAttempts) throw e
-                val delayTime = (1000L * attempt * attempt) // Exponential backoff: 1s, 4s, 9s...
-                delay(delayTime)
+                if (attempt == maxAttempts - 1) throw e
+                delay(1000L * (attempt + 1) * (attempt + 1))
             }
         }
     }
 
     private suspend fun downloadSong(entity: md.oak.sonark.data.database.SongEntity) {
-        val fileId = extractFileId(entity.data)
-        val targetFile = File(musicDir, fileId)
+        val targetFile = File(musicDir, extractFileId(entity.data))
         
-        if (targetFile.exists() && entity.md5Hash != null) {
-            val actualHash = Utils.calculateMd5(targetFile)
-            if (actualHash == entity.md5Hash) {
-                songDao.markUrlAsDownloaded(entity.data, targetFile.absolutePath)
-                scope.launch { repository.fetchMetadata(entity.id) }
-                return
-            }
+        if (isAlreadyDownloaded(targetFile, entity.md5Hash)) {
+            markSongDownloaded(entity, targetFile)
+            return
         }
-        
-        val provider = repository.getProvider(entity.providerId) ?: throw Exception("Provider not found")
         
         songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.DOWNLOADING, 0)
         
         val syncSong = entity.toSyncSong("Album", null, AlbumType.NORMAL)
-        
-        val success = performDownload(syncSong, targetFile) { progress ->
-            scope.launch {
-                songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.DOWNLOADING, progress)
-            }
+        performValidatedDownload(syncSong, targetFile, entity.md5Hash) { progress ->
+            songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.DOWNLOADING, progress)
         }
 
-        if (success) {
-            val actualHash = Utils.calculateMd5(targetFile)
-            if (entity.md5Hash == null || actualHash == entity.md5Hash) {
-                songDao.markUrlAsDownloaded(entity.data, targetFile.absolutePath)
-                scope.launch { repository.fetchMetadata(entity.id) }
-            } else {
-                throw Exception("MD5 mismatch")
-            }
-        } else {
-            throw Exception("Download failed")
-        }
+        markSongDownloaded(entity, targetFile)
+    }
+
+    private suspend fun markSongDownloaded(entity: md.oak.sonark.data.database.SongEntity, file: File) {
+        songDao.markUrlAsDownloaded(entity.data, file.absolutePath)
+        scope.launch { repository.fetchMetadata(entity.id) }
     }
 
     private suspend fun downloadAlbumCover(entity: md.oak.sonark.data.database.AlbumEntity) {
         val url = entity.imageUrl ?: return
-        val fileId = "cover_" + extractFileId(url)
-        val targetFile = File(musicDir, fileId)
+        val targetFile = File(musicDir, "cover_" + extractFileId(url))
 
-        if (targetFile.exists() && entity.md5Hash != null) {
-            val actualHash = Utils.calculateMd5(targetFile)
-            if (actualHash == entity.md5Hash) {
-                albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
-                return
-            }
+        if (isAlreadyDownloaded(targetFile, entity.md5Hash)) {
+            albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
+            return
         }
-
-        val provider = repository.getProvider("google_drive") ?: throw Exception("Provider not found")
 
         albumDao.updateDownloadStatusByUrl(url, DownloadStatus.DOWNLOADING, 0)
 
-        val dummySong = md.oak.sonark.data.model.Song(
-            id = "cover_${entity.id}",
-            title = "Cover",
-            artist = entity.artist,
-            album = entity.title,
-            duration = 0
-        )
         val syncSong = md.oak.sonark.data.model.SyncSong(
-            song = dummySong,
+            song = md.oak.sonark.data.model.Song(
+                id = "cover_${entity.id}",
+                title = "Cover",
+                artist = entity.artist,
+                album = entity.title,
+                duration = 0
+            ),
             data = url,
             albumId = entity.id,
             size = entity.size,
@@ -176,40 +139,44 @@ class DownloadManager(
             providerId = "google_drive"
         )
 
-        val success = performDownload(syncSong, targetFile) { progress ->
-            scope.launch {
-                albumDao.updateDownloadStatusByUrl(url, DownloadStatus.DOWNLOADING, progress)
-            }
+        performValidatedDownload(syncSong, targetFile, entity.md5Hash) { progress ->
+            albumDao.updateDownloadStatusByUrl(url, DownloadStatus.DOWNLOADING, progress)
         }
 
-        if (success) {
-            val actualHash = Utils.calculateMd5(targetFile)
-            if (entity.md5Hash == null || actualHash == entity.md5Hash) {
-                albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
-            } else {
-                throw Exception("MD5 mismatch")
-            }
-        } else {
-            throw Exception("Download failed")
+        albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
+    }
+
+    private suspend fun isAlreadyDownloaded(file: File, expectedHash: String?): Boolean {
+        if (!file.exists() || expectedHash == null) return false
+        return withContext(Dispatchers.IO) {
+            Utils.calculateMd5(file) == expectedHash
         }
     }
 
-    private suspend fun performDownload(
+    private suspend fun performValidatedDownload(
         syncSong: md.oak.sonark.data.model.SyncSong,
         targetFile: File,
-        onProgressUpdate: (Int) -> Unit
-    ): Boolean {
-        val provider = repository.getProvider(syncSong.providerId) ?: return false
+        expectedHash: String?,
+        onProgressUpdate: suspend (Int) -> Unit
+    ) {
+        val provider = repository.getProvider(syncSong.providerId) 
+            ?: throw IllegalStateException("Provider ${syncSong.providerId} not found")
+
         var lastProgressUpdate = 0L
-        return provider.downloadSong(syncSong, targetFile) { downloaded, total ->
+        val success = provider.downloadSong(syncSong, targetFile) { downloaded, total ->
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastProgressUpdate > 500) {
-                val progress = if (total > 0) {
-                    (downloaded * 100 / total).toInt()
-                } else 0
-                onProgressUpdate(progress)
+                val progress = if (total > 0) (downloaded * 100 / total).toInt() else 0
+                scope.launch { onProgressUpdate(progress) }
                 lastProgressUpdate = currentTime
             }
+        }
+
+        if (!success) throw Exception("Download failed")
+
+        if (expectedHash != null) {
+            val actualHash = withContext(Dispatchers.IO) { Utils.calculateMd5(targetFile) }
+            if (actualHash != expectedHash) throw Exception("MD5 mismatch")
         }
     }
 

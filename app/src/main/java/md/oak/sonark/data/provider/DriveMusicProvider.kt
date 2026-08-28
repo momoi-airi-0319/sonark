@@ -1,6 +1,8 @@
 package md.oak.sonark.data.provider
 
 import android.net.Uri
+import android.util.Log
+import androidx.core.net.toUri
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -14,23 +16,36 @@ import md.oak.sonark.data.model.SyncSong
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
+import okhttp3.ResponseBody
 import java.io.FileOutputStream
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import java.io.File as JavaFile
-import androidx.core.net.toUri
 
 class DriveMusicProvider : MusicProvider {
     override val id: String = "google_drive"
     override val name: String = "Google Drive"
 
+    private companion object {
+        const val TAG = "DriveMusicProvider"
+        const val MIME_TYPE_FOLDER = "application/vnd.google-apps.folder"
+        const val MEDIA_URL_FORMAT = "https://www.googleapis.com/drive/v3/files/%s?alt=media"
+        const val BUFFER_SIZE = 8192
+        const val TIMEOUT_SECONDS = 30L
+        const val MAX_REQUESTS_PER_HOST = 10
+        const val HTTP_CODE_PARTIAL_CONTENT = 206
+        const val HTTP_CODE_RANGE_NOT_SATISFIABLE = 416
+    }
+
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .dispatcher(Dispatcher().apply {
-            maxRequestsPerHost = 10
+            maxRequestsPerHost = MAX_REQUESTS_PER_HOST
         })
         .build()
+
     private var driveService: Drive? = null
     var credential: GoogleAccountCredential? = null
         set(value) {
@@ -39,49 +54,60 @@ class DriveMusicProvider : MusicProvider {
         }
 
     private fun updateService() {
-        val cred = credential
-        driveService = if (cred != null) {
+        driveService = credential?.let { cred ->
             Drive.Builder(
                 NetHttpTransport(),
                 GsonFactory.getDefaultInstance(),
                 cred
             ).setApplicationName("Sonark").build()
-        } else {
-            null
         }
     }
 
     override suspend fun syncLibrary(): List<SyncSong> = withContext(Dispatchers.IO) {
         val service = driveService ?: return@withContext emptyList()
         val songs = mutableListOf<SyncSong>()
-        
-        val vaultFolder = findFolder(service, "Vault", "root") ?: return@withContext emptyList()
-        val albumFolders = listFolders(service, vaultFolder.id)
 
-        for (albumFolder in albumFolders) {
-            val files = listFiles(service, albumFolder.id)
-            val coverFile = files.find { file ->
-                val name = file.name.lowercase()
-                name.startsWith("cover.") || name.startsWith("folder.")
-            }
-            val imageUrl = coverFile?.let { "https://www.googleapis.com/drive/v3/files/${it.id}?alt=media" }
-            val coverSize = coverFile?.size?.toLong() ?: 0L
-            val coverMd5 = coverFile?.md5Checksum
+        try {
+            val vaultFolder = findFolder(service, "Vault", "root") ?: return@withContext emptyList()
+            val albumFolders = listFolders(service, vaultFolder.id)
 
-            val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
-            if (cueFiles.isNotEmpty()) {
-                cueFiles.forEachIndexed { index, cueFile ->
-                    songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl, coverSize, coverMd5, discNumber = index + 1))
-                }
-            } else {
-                for (file in files) {
-                    if (isAudioFile(file)) {
-                        songs.add(parseSong(file, albumFolder.id, albumFolder.name, imageUrl, coverSize, coverMd5))
-                    }
-                }
+            for (albumFolder in albumFolders) {
+                processAlbumFolder(service, albumFolder, songs)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync library", e)
         }
         songs
+    }
+
+    private suspend fun processAlbumFolder(service: Drive, albumFolder: File, songs: MutableList<SyncSong>) {
+        val files = listFiles(service, albumFolder.id)
+        val coverInfo = extractCoverInfo(files)
+        
+        val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
+        if (cueFiles.isNotEmpty()) {
+            cueFiles.forEachIndexed { index, cueFile ->
+                songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, coverInfo, discNumber = index + 1))
+            }
+        } else {
+            files.filter { isAudioFile(it) }.forEach { file ->
+                songs.add(parseSong(file, albumFolder.id, albumFolder.name, coverInfo))
+            }
+        }
+    }
+
+    private data class CoverInfo(val url: String?, val size: Long, val md5: String?)
+
+    private fun extractCoverInfo(files: List<File>): CoverInfo {
+        val coverFile = files.find { file ->
+            val name = file.name.lowercase()
+            name.startsWith("cover.") || name.startsWith("folder.")
+        }
+        return CoverInfo(
+            url = coverFile?.id?.let { MEDIA_URL_FORMAT.format(it) },
+            size = coverFile?.size?.toLong() ?: 0L,
+            md5 = coverFile?.md5Checksum
+        )
     }
 
     override suspend fun resolveStreamUri(song: SyncSong): Uri {
@@ -89,13 +115,13 @@ class DriveMusicProvider : MusicProvider {
     }
 
     override suspend fun downloadSong(
-        song: SyncSong, 
+        song: SyncSong,
         targetFile: JavaFile,
         onProgress: (Long, Long) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
         val headers = getAuthHeaders()
         val existingSize = if (targetFile.exists()) targetFile.length() else 0L
-        
+
         if (song.size in 1..existingSize) return@withContext true
 
         val request = Request.Builder()
@@ -110,41 +136,70 @@ class DriveMusicProvider : MusicProvider {
 
         try {
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful && response.code != 416) {
-                    android.util.Log.e("Sonark", "Download failed for ${song.song.title}: HTTP ${response.code}")
-                    return@withContext false
-                }
-                
-                if (response.code == 416) return@withContext true 
+                handleDownloadResponse(response, song, targetFile, existingSize, onProgress)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Download failed for ${song.song.title}", e)
+            false
+        }
+    }
 
-                val body = response.body ?: return@withContext false
-                val append = response.code == 206
-                
-                // Get accurate total size from Content-Length or Content-Range if possible
-                val contentLength = body.contentLength()
-                val totalSize = if (append) {
-                    val contentRange = response.header("Content-Range")
-                    contentRange?.substringAfterLast("/")?.toLongOrNull() ?: song.size
-                } else {
-                    if (contentLength > 0) contentLength else song.size
-                }
+    private fun handleDownloadResponse(
+        response: okhttp3.Response,
+        song: SyncSong,
+        targetFile: JavaFile,
+        existingSize: Long,
+        onProgress: (Long, Long) -> Unit
+    ): Boolean {
+        if (!response.isSuccessful && response.code != HTTP_CODE_RANGE_NOT_SATISFIABLE) {
+            Log.e(TAG, "Download failed for ${song.song.title}: HTTP ${response.code}")
+            return false
+        }
 
-                FileOutputStream(targetFile, append).use { fos ->
-                    val inputStream = body.byteStream()
-                    val buffer = ByteArray(8192)
+        if (response.code == HTTP_CODE_RANGE_NOT_SATISFIABLE) return true
+
+        val body = response.body ?: return false
+        val append = response.code == HTTP_CODE_PARTIAL_CONTENT
+        val totalSize = calculateTotalSize(response, body.contentLength(), song.size, append)
+
+        return writeBodyToFile(body, targetFile, append, existingSize, totalSize, onProgress)
+    }
+
+    private fun calculateTotalSize(response: okhttp3.Response, contentLength: Long, songSize: Long, isAppend: Boolean): Long {
+        return if (isAppend) {
+            response.header("Content-Range")
+                ?.substringAfterLast("/")
+                ?.toLongOrNull() ?: songSize
+        } else {
+            if (contentLength > 0) contentLength else songSize
+        }
+    }
+
+    private fun writeBodyToFile(
+        body: ResponseBody,
+        targetFile: JavaFile,
+        append: Boolean,
+        existingSize: Long,
+        totalSize: Long,
+        onProgress: (Long, Long) -> Unit
+    ): Boolean {
+        return try {
+            FileOutputStream(targetFile, append).use { fos ->
+                body.byteStream().use { inputStream ->
+                    val buffer = ByteArray(BUFFER_SIZE)
                     var bytesRead: Int
                     var totalDownloaded = if (append) existingSize else 0L
-                    
+
                     while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                         fos.write(buffer, 0, bytesRead)
                         totalDownloaded += bytesRead
                         onProgress(totalDownloaded, totalSize)
                     }
                 }
-                true
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+            true
+        } catch (e: IOException) {
+            Log.e(TAG, "Error writing file ${targetFile.name}", e)
             false
         }
     }
@@ -152,7 +207,8 @@ class DriveMusicProvider : MusicProvider {
     override fun getAuthHeaders(): Map<String, String> {
         val token = try {
             credential?.getToken()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get token", e)
             null
         }
         return if (token != null) {
@@ -163,30 +219,30 @@ class DriveMusicProvider : MusicProvider {
     }
 
     private fun findFolder(service: Drive, name: String, parentId: String): File? {
-        val query = "name = '$name' and mimeType = 'application/vnd.google-apps.folder' and '$parentId' in parents and trashed = false"
-        val result = service.files().list()
+        val query = "name = '$name' and mimeType = '$MIME_TYPE_FOLDER' and '$parentId' in parents and trashed = false"
+        return service.files().list()
             .setQ(query)
             .setFields("files(id, name)")
             .execute()
-        return result.files.firstOrNull()
+            .files?.firstOrNull()
     }
 
     private fun listFolders(service: Drive, parentId: String): List<File> {
-        val query = "'$parentId' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        val result = service.files().list()
+        val query = "'$parentId' in parents and mimeType = '$MIME_TYPE_FOLDER' and trashed = false"
+        return service.files().list()
             .setQ(query)
             .setFields("files(id, name)")
             .execute()
-        return result.files ?: emptyList()
+            .files ?: emptyList()
     }
 
     private fun listFiles(service: Drive, parentId: String): List<File> {
         val query = "'$parentId' in parents and trashed = false"
-        val result = service.files().list()
+        return service.files().list()
             .setQ(query)
             .setFields("files(id, name, mimeType, size, md5Checksum)")
             .execute()
-        return result.files ?: emptyList()
+            .files ?: emptyList()
     }
 
     private fun isAudioFile(file: File): Boolean {
@@ -199,22 +255,65 @@ class DriveMusicProvider : MusicProvider {
         cueFile: File,
         allFiles: List<File>,
         albumName: String,
-        imageUrl: String?,
-        coverSize: Long = 0,
-        coverMd5: String? = null,
+        coverInfo: CoverInfo,
         discNumber: Int = 0
     ): List<SyncSong> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<SyncSong>()
         try {
             val content = service.files().get(cueFile.id).executeMediaAsInputStream().bufferedReader().use { it.readText() }
+            val parser = CueParser(content, allFiles, cueFile.id, albumName, coverInfo, discNumber, id)
+            songs.addAll(parser.parse())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse CUE file ${cueFile.name}", e)
+        }
+        songs
+    }
+
+    private fun parseSong(file: File, albumId: String, albumName: String, coverInfo: CoverInfo): SyncSong {
+        val (disc, track, title) = FilenameParser.parse(file.name)
+
+        val song = Song(
+            id = file.id,
+            title = title,
+            artist = "Unknown Artist",
+            album = albumName,
+            duration = 0,
+            discNumber = disc,
+            trackNumber = track,
+            imageUrl = coverInfo.url,
+            type = AlbumType.NORMAL
+        )
+
+        return SyncSong(
+            song = song,
+            data = MEDIA_URL_FORMAT.format(file.id),
+            albumId = albumId,
+            providerId = id,
+            size = file.size.toLong(),
+            md5Hash = file.md5Checksum,
+            coverData = coverInfo.url,
+            coverSize = coverInfo.size,
+            coverMd5 = coverInfo.md5
+        )
+    }
+
+    private class CueParser(
+        private val content: String,
+        private val allFiles: List<File>,
+        private val cueFileId: String,
+        private val albumName: String,
+        private val coverInfo: CoverInfo,
+        private val discNumber: Int,
+        private val providerId: String
+    ) {
+        fun parse(): List<SyncSong> {
+            val tempSongs = mutableListOf<SyncSong>()
             var currentAudioFile: File? = null
             var albumArtist = "Unknown Artist"
             var currentTrackTitle = ""
             var currentTrackArtist = ""
             var currentTrackNumber = ""
-            
-            val tempSongs = mutableListOf<SyncSong>()
-            
+
             content.lines().forEach { line ->
                 val trimmed = line.trim()
                 when {
@@ -241,103 +340,74 @@ class DriveMusicProvider : MusicProvider {
                         val timeStr = trimmed.substringAfter("INDEX 01 ").trim()
                         val offsetMs = parseCueTime(timeStr)
                         val audioFile = currentAudioFile ?: return@forEach
-                        
+
                         val song = Song(
-                            id = "${cueFile.id}_${discNumber}_$currentTrackNumber",
+                            id = "${cueFileId}_${discNumber}_$currentTrackNumber",
                             title = currentTrackTitle,
                             artist = currentTrackArtist,
                             album = albumName,
                             duration = 0,
                             discNumber = discNumber,
                             trackNumber = currentTrackNumber.toIntOrNull() ?: 0,
-                            imageUrl = imageUrl,
+                            imageUrl = coverInfo.url,
                             type = AlbumType.CUE
                         )
-                        
+
                         tempSongs.add(SyncSong(
                             song = song,
-                            data = "https://www.googleapis.com/drive/v3/files/${audioFile.id}?alt=media",
-                            albumId = cueFile.id,
-                            providerId = id,
+                            data = MEDIA_URL_FORMAT.format(audioFile.id),
+                            albumId = cueFileId,
+                            providerId = providerId,
                             size = audioFile.size.toLong(),
                             md5Hash = audioFile.md5Checksum,
                             startOffset = offsetMs,
-                            coverData = imageUrl,
-                            coverSize = coverSize,
-                            coverMd5 = coverMd5
+                            coverData = coverInfo.url,
+                            coverSize = coverInfo.size,
+                            coverMd5 = coverInfo.md5
                         ))
-                        
+
                         currentTrackTitle = ""
                     }
                 }
             }
 
-            // Calculate durations
-            for (i in tempSongs.indices) {
-                val current = tempSongs[i]
+            return calculateDurations(tempSongs)
+        }
+
+        private fun calculateDurations(tempSongs: List<SyncSong>): List<SyncSong> {
+            return tempSongs.mapIndexed { i, current ->
                 val duration = if (i < tempSongs.size - 1) {
                     tempSongs[i + 1].startOffset - current.startOffset
                 } else {
-                    0L // We don't know the end of the file here easily, but better than nothing
+                    0L
                 }
-                songs.add(current.copy(song = current.song.copy(duration = duration)))
+                current.copy(song = current.song.copy(duration = duration))
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
-        songs
+
+        private fun parseCueTime(timeStr: String): Long {
+            val parts = timeStr.split(":")
+            if (parts.size != 3) return 0L
+            val minutes = parts[0].toLongOrNull() ?: 0L
+            val seconds = parts[1].toLongOrNull() ?: 0L
+            val frames = parts[2].toLongOrNull() ?: 0L
+            return (minutes * 60 * 1000) + (seconds * 1000) + (frames * 1000 / 75)
+        }
     }
 
-    private fun parseCueTime(timeStr: String): Long {
-        val parts = timeStr.split(":")
-        if (parts.size != 3) return 0L
-        val minutes = parts[0].toLongOrNull() ?: 0L
-        val seconds = parts[1].toLongOrNull() ?: 0L
-        val frames = parts[2].toLongOrNull() ?: 0L
-        return (minutes * 60 * 1000) + (seconds * 1000) + (frames * 1000 / 75)
-    }
+    private object FilenameParser {
+        private val multiDiscRegex = """^(\d+)-(\d+)\s*[-.]?\s*(.*)$""".toRegex()
+        private val singleDiscRegex = """^(\d+)\s*[-.]?\s*(.*)$""".toRegex()
 
-    private fun parseSong(file: File, albumId: String, albumName: String, imageUrl: String?, coverSize: Long = 0, coverMd5: String? = null): SyncSong {
-        val (disc, track, title) = parseFilename(file.name)
-
-        val song = Song(
-            id = file.id,
-            title = title,
-            artist = "Unknown Artist",
-            album = albumName,
-            duration = 0,
-            discNumber = disc,
-            trackNumber = track,
-            imageUrl = imageUrl,
-            type = AlbumType.NORMAL
-        )
-
-        return SyncSong(
-            song = song,
-            data = "https://www.googleapis.com/drive/v3/files/${file.id}?alt=media",
-            albumId = albumId,
-            providerId = id,
-            size = file.size.toLong(),
-            md5Hash = file.md5Checksum,
-            coverData = imageUrl,
-            coverSize = coverSize,
-            coverMd5 = coverMd5
-        )
-    }
-
-    private fun parseFilename(filename: String): Triple<Int, Int, String> {
-        val cleanName = filename.substringBeforeLast(".")
-        // Match "1-01 - Title" or "1-01. Title" or "1-01 Title"
-        val multiDiscRegex = """^(\d+)-(\d+)\s*[-.]?\s*(.*)$""".toRegex()
-        // Match "01 - Title" or "01. Title" or "01 Title"
-        val singleDiscRegex = """^(\d+)\s*[-.]?\s*(.*)$""".toRegex()
-
-        multiDiscRegex.find(cleanName)?.let { match ->
-            return Triple(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].trim())
+        fun parse(filename: String): Triple<Int, Int, String> {
+            val cleanName = filename.substringBeforeLast(".")
+            multiDiscRegex.find(cleanName)?.let { match ->
+                return Triple(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].trim())
+            }
+            singleDiscRegex.find(cleanName)?.let { match ->
+                return Triple(0, match.groupValues[1].toInt(), match.groupValues[2].trim())
+            }
+            return Triple(0, 0, cleanName)
         }
-        singleDiscRegex.find(cleanName)?.let { match ->
-            return Triple(0, match.groupValues[1].toInt(), match.groupValues[2].trim())
-        }
-        return Triple(0, 0, cleanName)
     }
 }

@@ -68,46 +68,21 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         controller.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _isPlaying.value = isPlaying
-                if (isPlaying) {
-                    startProgressUpdate()
-                } else {
-                    stopProgressUpdate()
-                }
+                if (isPlaying) startProgressUpdate() else stopProgressUpdate()
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                val mediaId = mediaItem?.mediaId
-                val song = _queue.value.find { it.song.id == mediaId }
-                _currentSong.value = song
-                if (song != null) {
-                    _duration.value = song.song.duration
-                    _playbackProgress.value = 0L
-                    lastSeekTime = 0L // Allow immediate updates for the new song
-                }
+                handleMediaItemTransition(mediaItem)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) {
-                    val playerDuration = controller.duration
-                    if (playerDuration > 0) {
-                        val currentSong = _currentSong.value
-                        // For CUE tracks, trust our calculated duration if we already have one
-                        val isCue = currentSong?.song?.type == AlbumType.CUE
-                        if (!isCue || _duration.value <= 0) {
-                            _duration.value = playerDuration
-                        }
-                    }
-                }
+                if (playbackState == Player.STATE_READY) updateDuration(controller)
             }
 
-            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
-                _shuffleEnabled.value = shuffleModeEnabled
-            }
-
-            override fun onRepeatModeChanged(repeatMode: Int) {
-                _repeatMode.value = repeatMode
-            }
+            override fun onShuffleModeEnabledChanged(enabled: Boolean) { _shuffleEnabled.value = enabled }
+            override fun onRepeatModeChanged(mode: Int) { _repeatMode.value = mode }
         })
+        
         _isPlaying.value = controller.isPlaying
         _duration.value = controller.duration
         _shuffleEnabled.value = controller.shuffleModeEnabled
@@ -115,73 +90,84 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         if (controller.isPlaying) startProgressUpdate()
     }
 
+    private fun handleMediaItemTransition(mediaItem: MediaItem?) {
+        val song = _queue.value.find { it.song.id == mediaItem?.mediaId }
+        _currentSong.value = song
+        song?.let {
+            _duration.value = it.song.duration
+            _playbackProgress.value = 0L
+            lastSeekTime = 0L
+        }
+    }
+
+    private fun updateDuration(controller: MediaController) {
+        val playerDuration = controller.duration
+        if (playerDuration <= 0) return
+        
+        val isCue = _currentSong.value?.song?.type == AlbumType.CUE
+        if (!isCue || _duration.value <= 0) {
+            _duration.value = playerDuration
+        }
+    }
+
     fun playQueue(songs: List<SyncSong>, startIndex: Int = 0) {
         val controller = this.controller ?: return
-        
-        // Only play downloaded songs
         val playableSongs = songs.filter { it.localPath != null && java.io.File(it.localPath).exists() }
         if (playableSongs.isEmpty()) return
 
-        val originalStartSong = songs.getOrNull(startIndex)
-        val newStartIndex = if (originalStartSong != null) {
-            playableSongs.indexOfFirst { it.song.id == originalStartSong.song.id }.coerceAtLeast(0)
-        } else 0
+        val targetSong = songs.getOrNull(startIndex)
+        val newStartIndex = playableSongs.indexOfFirst { it.song.id == targetSong?.song?.id }.coerceAtLeast(0)
+        val actualTargetSong = playableSongs.getOrNull(newStartIndex)
 
-        val targetSong = playableSongs.getOrNull(newStartIndex)
-        val isSameSong = targetSong?.song?.id == _currentSong.value?.song?.id
-        
-        if (isSameSong) {
-            val isSameQueue = _queue.value.size == playableSongs.size && 
-                             _queue.value.zip(playableSongs).all { it.first.song.id == it.second.song.id }
-            if (isSameQueue) {
-                if (!controller.isPlaying) {
-                    controller.play()
-                }
-                return
-            }
+        if (isSameQueue(playableSongs) && actualTargetSong?.song?.id == _currentSong.value?.song?.id) {
+            if (!controller.isPlaying) controller.play()
+            return
         }
 
         _queue.value = playableSongs
-        
-        val mediaItems = playableSongs.mapIndexed { index, syncSong ->
-            val uri = Uri.fromFile(java.io.File(syncSong.localPath!!))
-            val clippingBuilder = MediaItem.ClippingConfiguration.Builder()
-                .setStartPositionMs(syncSong.startOffset)
-            
-            val trackDuration = if (syncSong.song.duration > 0) {
-                syncSong.song.duration
-            } else if (syncSong.song.type == AlbumType.CUE) {
-                // Fallback: If duration is unknown, try calculating from the next track in the queue
-                val nextSong = playableSongs.getOrNull(index + 1)
-                if (nextSong != null && nextSong.albumId == syncSong.albumId) {
-                    nextSong.startOffset - syncSong.startOffset
-                } else 0L
-            } else 0L
-
-            if (trackDuration > 0) {
-                clippingBuilder.setEndPositionMs(syncSong.startOffset + trackDuration)
-            }
-
-            MediaItem.Builder()
-                .setMediaId(syncSong.song.id)
-                .setUri(uri)
-                .setClippingConfiguration(clippingBuilder.build())
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(syncSong.song.title)
-                        .setArtist(syncSong.song.artist)
-                        .setAlbumTitle(syncSong.song.album)
-                        .setArtworkUri(syncSong.song.imageUrl?.toUri())
-                        .build()
-                )
-                .build()
+        val mediaItems = playableSongs.mapIndexed { index, syncSong -> 
+            createMediaItem(syncSong, playableSongs.getOrNull(index + 1)) 
         }
 
-        val startPosition = if (isSameSong) controller.currentPosition else 0L
+        val startPosition = if (actualTargetSong?.song?.id == _currentSong.value?.song?.id) controller.currentPosition else 0L
         controller.setMediaItems(mediaItems, newStartIndex, startPosition)
         controller.prepare()
         controller.play()
-        _currentSong.value = targetSong
+        _currentSong.value = actualTargetSong
+    }
+
+    private fun isSameQueue(newQueue: List<SyncSong>): Boolean {
+        return _queue.value.size == newQueue.size && 
+               _queue.value.zip(newQueue).all { it.first.song.id == it.second.song.id }
+    }
+
+    private fun createMediaItem(syncSong: SyncSong, nextSong: SyncSong?): MediaItem {
+        val uri = Uri.fromFile(java.io.File(syncSong.localPath!!))
+        val duration = when {
+            syncSong.song.duration > 0 -> syncSong.song.duration
+            syncSong.song.type == AlbumType.CUE && nextSong?.albumId == syncSong.albumId -> 
+                nextSong.startOffset - syncSong.startOffset
+            else -> 0L
+        }
+
+        val clipping = MediaItem.ClippingConfiguration.Builder()
+            .setStartPositionMs(syncSong.startOffset)
+            .apply { if (duration > 0) setEndPositionMs(syncSong.startOffset + duration) }
+            .build()
+
+        return MediaItem.Builder()
+            .setMediaId(syncSong.song.id)
+            .setUri(uri)
+            .setClippingConfiguration(clipping)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(syncSong.song.title)
+                    .setArtist(syncSong.song.artist)
+                    .setAlbumTitle(syncSong.song.album)
+                    .setArtworkUri(syncSong.song.imageUrl?.toUri())
+                    .build()
+            )
+            .build()
     }
 
     fun togglePlayback() {
