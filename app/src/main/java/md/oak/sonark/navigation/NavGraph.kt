@@ -24,6 +24,7 @@ import md.oak.sonark.ui.screens.PlayerScreen
 import md.oak.sonark.ui.screens.SearchScreen
 import md.oak.sonark.ui.screens.SettingsScreen
 import androidx.core.net.toUri
+import md.oak.sonark.ui.utils.ArtistUtils
 
 @Composable
 fun createNavEntryProvider(
@@ -39,6 +40,7 @@ fun createNavEntryProvider(
 ): (NavKey) -> NavEntry<NavKey> {
     val songs by viewModel.songs.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
+    val artists by viewModel.artists.collectAsStateWithLifecycle()
     val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
     val downloadQueue by viewModel.downloadQueue.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
@@ -74,6 +76,8 @@ fun createNavEntryProvider(
             LibraryScreen(
                 uiState = uiState,
                 albums = albums,
+                artists = artists,
+                songs = songs,
                 activeAccount = activeAccount,
                 otherAccounts = otherAccounts,
                 storageQuota = storageQuota,
@@ -86,6 +90,16 @@ fun createNavEntryProvider(
                 onSortOrderChange = { viewModel.setSortOrder(it) },
                 onAlbumClick = { album ->
                     navigator.navigate(AlbumKey(album.title))
+                },
+                onArtistClick = { artist ->
+                    navigator.navigate(ArtistKey(artist.name))
+                },
+                onSongClick = { syncSong ->
+                    if (syncSong.song.id == currentSong?.song?.id) {
+                        navigator.navigate(PlayerKey)
+                    } else {
+                        playbackViewModel.playQueue(songs, songs.indexOf(syncSong))
+                    }
                 },
                 onPlayerClick = { navigator.navigate(PlayerKey) },
                 onRefresh = { viewModel.loadSongs() },
@@ -135,16 +149,38 @@ fun createNavEntryProvider(
             )
         }
         entry<ArtistKey> { key ->
-            val artistAlbums = remember(key, albums) {
-                albums.filter { it.artist == key.artistName }
+            val normalizedTarget = remember(key) { ArtistUtils.normalize(key.artistName) }
+            
+            val personalAlbums = remember(normalizedTarget, albums) {
+                albums.filter { ArtistUtils.normalize(it.artist) == normalizedTarget }
             }
+            
+            val featuredSongs = remember(normalizedTarget, songs) {
+                songs.filter { syncSong ->
+                    // Artist is in song's artist list
+                    val isParticipant = ArtistUtils.splitArtists(syncSong.song.artist).any { ArtistUtils.normalize(it) == normalizedTarget }
+                    // AND it's NOT part of a personal album (to avoid duplicates)
+                    val isInPersonalAlbum = personalAlbums.any { it.title == syncSong.song.album }
+                    isParticipant && !isInPersonalAlbum
+                }
+            }
+
             ArtistScreen(
                 artistName = key.artistName,
-                albums = artistAlbums,
+                personalAlbums = personalAlbums,
+                featuredSongs = featuredSongs,
+                currentSong = currentSong,
+                isPlaying = isPlaying,
+                progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                 onAlbumClick = { album ->
                     navigator.navigate(AlbumKey(album.title))
                 },
-                onBackClick = { navigator.goBack() }
+                onSongClick = { syncSong ->
+                    playbackViewModel.playQueue(featuredSongs, featuredSongs.indexOf(syncSong))
+                },
+                onBackClick = { navigator.goBack() },
+                onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
+                onDownloadSongs = { viewModel.downloadSongs(it) }
             )
         }
         entry<AlbumKey> { key ->

@@ -6,11 +6,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.AlbumType
+import md.oak.sonark.data.model.Artist
 import md.oak.sonark.data.model.DownloadStatus
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.repository.AccountRepository
 import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.ui.model.AlbumDownloadItem
+import md.oak.sonark.ui.utils.ArtistUtils
 
 enum class SortOrder {
     TITLE, ARTIST
@@ -46,6 +48,34 @@ class MainViewModel(
         .map { albums ->
             albums.sortedBy { it.title.lowercase() }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val artists: StateFlow<List<Artist>> = combine(songs, albums) { allSongs, allAlbums ->
+        allSongs.flatMap { syncSong ->
+            ArtistUtils.splitArtists(syncSong.song.artist).map { it to syncSong }
+        }
+        .groupBy { ArtistUtils.normalize(it.first) }
+        .map { (normalizedTarget, normalizedGroup) ->
+            val variations = normalizedGroup.groupBy { it.first }
+            
+            val bestName = variations.keys.sortedWith(
+                compareByDescending<String> { name ->
+                    allAlbums.count { album -> album.artist == name }
+                }.thenByDescending { name ->
+                    variations[name]?.size ?: 0
+                }.thenByDescending { it }
+            ).first()
+
+            val allArtistSongs = normalizedGroup.map { it.second }
+            Artist(
+                name = bestName,
+                // albumCount only counts where this artist (normalized) is the Album Artist
+                albumCount = allAlbums.count { ArtistUtils.normalize(it.artist) == normalizedTarget },
+                songCount = allArtistSongs.size,
+                imageUrl = null // Give up on automatically setting artist avatar
+            )
+        }
+        .sortedBy { it.name.lowercase() }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val downloadQueue: StateFlow<List<AlbumDownloadItem>> = songs
         .map { allSyncSongs ->

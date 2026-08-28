@@ -1,38 +1,33 @@
 package md.oak.sonark.ui.screens.library
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import md.oak.sonark.data.model.Album
+import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.UIState
 import md.oak.sonark.ui.components.EmptyState
-import md.oak.sonark.ui.model.AlbumUiItem
-import md.oak.sonark.ui.theme.SonarkTheme
-import md.oak.sonark.ui.utils.ArtistUtils
+import md.oak.sonark.ui.components.SongListItem
 
 @Composable
-fun LibraryGrid(
+fun LibrarySongs(
     uiState: UIState,
-    albums: List<Album>,
-    onAlbumClick: (Album) -> Unit,
+    songs: List<SyncSong>,
+    currentSong: SyncSong?,
+    isPlaying: Boolean,
+    progress: Float,
+    onSongClick: (SyncSong) -> Unit,
     onRefresh: () -> Unit,
-    contentPadding: PaddingValues,
-    focusedArtist: String? = null
+    contentPadding: PaddingValues
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState) {
@@ -66,7 +61,7 @@ fun LibraryGrid(
                 )
             }
             UIState.SUCCESS -> {
-                if (albums.isEmpty()) {
+                if (songs.isEmpty()) {
                     EmptyState(
                         icon = Icons.Rounded.LibraryMusic,
                         message = "No Songs Found",
@@ -74,53 +69,22 @@ fun LibraryGrid(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 150.dp),
+                    LazyColumn(
                         contentPadding = contentPadding,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(albums, key = { it.title }) { album ->
-                            val uiItem = remember(album) { AlbumUiItem.from(album) }
-                            uiItem.GridItem(
-                                onClick = { onAlbumClick(album) },
-                                customArtist = if (focusedArtist != null && album.artist != focusedArtist) {
-                                    focusedArtist
-                                } else null
+                        items(songs, key = { it.song.id }) { syncSong ->
+                            SongListItem(
+                                syncSong = syncSong,
+                                isCurrent = syncSong.song.id == currentSong?.song?.id,
+                                isPlaying = isPlaying,
+                                progress = progress,
+                                onClick = { onSongClick(syncSong) }
                             )
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LibraryGridLoadingPreview() {
-    SonarkTheme {
-        LibraryGrid(
-            uiState = UIState.LOADING,
-            albums = emptyList(),
-            onAlbumClick = {},
-            onRefresh = {},
-            contentPadding = PaddingValues(0.dp)
-        )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LibraryGridErrorPreview() {
-    SonarkTheme {
-        LibraryGrid(
-            uiState = UIState.ERROR,
-            albums = emptyList(),
-            onAlbumClick = {},
-            onRefresh = {},
-            contentPadding = PaddingValues(0.dp)
-        )
     }
 }

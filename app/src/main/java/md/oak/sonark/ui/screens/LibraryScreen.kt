@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.Album
+import md.oak.sonark.data.model.Artist
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.repository.StorageQuota
 import md.oak.sonark.data.repository.UserAccount
@@ -20,7 +21,9 @@ import md.oak.sonark.ui.UIState
 import md.oak.sonark.ui.components.FloatingNavItem
 import md.oak.sonark.ui.screens.library.AccountPopDialog
 import md.oak.sonark.ui.screens.library.FloatingTopBar
+import md.oak.sonark.ui.screens.library.LibraryArtists
 import md.oak.sonark.ui.screens.library.LibraryGrid
+import md.oak.sonark.ui.screens.library.LibrarySongs
 import md.oak.sonark.ui.theme.SonarkTheme
 
 enum class LibraryTab(val label: String, val icon: ImageVector) {
@@ -35,6 +38,8 @@ enum class LibraryTab(val label: String, val icon: ImageVector) {
 fun LibraryScreen(
     uiState: UIState,
     albums: List<Album>,
+    artists: List<Artist>,
+    songs: List<SyncSong>,
     activeAccount: UserAccount?,
     otherAccounts: List<UserAccount>,
     storageQuota: StorageQuota?,
@@ -46,6 +51,8 @@ fun LibraryScreen(
     sortOrder: SortOrder,
     onSortOrderChange: (SortOrder) -> Unit,
     onAlbumClick: (Album) -> Unit,
+    onArtistClick: (Artist) -> Unit,
+    onSongClick: (SyncSong) -> Unit,
     onPlayerClick: () -> Unit,
     onRefresh: () -> Unit,
     onQueueClick: () -> Unit,
@@ -59,7 +66,7 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     var showAccountDialog by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableStateOf(LibraryTab.Recent) }
+    var selectedTab by remember { mutableStateOf(LibraryTab.Albums) }
 
     Scaffold(
         modifier = modifier,
@@ -69,18 +76,68 @@ fun LibraryScreen(
         val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 132.dp + 24.dp
 
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            LibraryGrid(
-                uiState = uiState,
-                albums = albums,
-                onAlbumClick = onAlbumClick,
-                onRefresh = onRefresh,
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = topPadding,
-                    end = 16.dp,
-                    bottom = bottomPadding
-                )
-            )
+            when (selectedTab) {
+                LibraryTab.Artists -> {
+                    LibraryArtists(
+                        uiState = uiState,
+                        artists = artists,
+                        onArtistClick = onArtistClick,
+                        onRefresh = onRefresh,
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = topPadding,
+                            end = 16.dp,
+                            bottom = bottomPadding
+                        )
+                    )
+                }
+                LibraryTab.Albums -> {
+                    LibraryGrid(
+                        uiState = uiState,
+                        albums = albums,
+                        onAlbumClick = onAlbumClick,
+                        onRefresh = onRefresh,
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = topPadding,
+                            end = 16.dp,
+                            bottom = bottomPadding
+                        )
+                    )
+                }
+                LibraryTab.Songs -> {
+                    LibrarySongs(
+                        uiState = uiState,
+                        songs = songs,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                        progress = progress,
+                        onSongClick = onSongClick,
+                        onRefresh = onRefresh,
+                        contentPadding = PaddingValues(
+                            start = 0.dp,
+                            top = topPadding,
+                            end = 0.dp,
+                            bottom = bottomPadding
+                        )
+                    )
+                }
+                else -> {
+                    // Default to Album grid for now for other tabs
+                    LibraryGrid(
+                        uiState = uiState,
+                        albums = albums,
+                        onAlbumClick = onAlbumClick,
+                        onRefresh = onRefresh,
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = topPadding,
+                            end = 16.dp,
+                            bottom = bottomPadding
+                        )
+                    )
+                }
+            }
 
             FloatingTopBar(
                 currentSong = currentSong,
@@ -186,6 +243,8 @@ fun LibraryScreenLoadingPreview() {
         LibraryScreen(
             uiState = UIState.LOADING,
             albums = emptyList(),
+            artists = emptyList(),
+            songs = emptyList(),
             activeAccount = null,
             otherAccounts = emptyList(),
             storageQuota = null,
@@ -197,6 +256,8 @@ fun LibraryScreenLoadingPreview() {
             sortOrder = SortOrder.TITLE,
             onSortOrderChange = {},
             onAlbumClick = {},
+            onArtistClick = {},
+            onSongClick = {},
             onPlayerClick = {},
             onRefresh = {},
             onQueueClick = {},

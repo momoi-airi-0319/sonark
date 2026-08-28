@@ -114,7 +114,7 @@ class MusicRepository(
         return AlbumEntity(
             id = albumId,
             title = firstSong.album,
-            artist = syncSongs.firstOrNull { it.song.artist != "Unknown Artist" }?.song?.artist ?: firstSong.artist,
+            artist = firstSong.artist.takeIf { it != "Unknown Artist" } ?: "Various Artists",
             imageUrl = syncSongs.firstOrNull { it.song.imageUrl != null }?.song?.imageUrl,
             localPath = existing?.localPath,
             downloadStatus = when {

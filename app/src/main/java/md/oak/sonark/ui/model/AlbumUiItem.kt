@@ -20,9 +20,9 @@ sealed class AlbumUiItem {
     abstract fun getImageShape(): Shape
 
     @Composable
-    fun GridItem(onClick: () -> Unit) {
-        val displayArtist = remember(album.artist) {
-            if (album.artist.isBlank() || album.artist.equals("Unknown Artist", ignoreCase = true)) {
+    fun GridItem(onClick: () -> Unit, customArtist: String? = null) {
+        val displayArtist = remember(album.artist, customArtist) {
+            customArtist ?: if (album.artist.isBlank() || album.artist.equals("Unknown Artist", ignoreCase = true)) {
                 "Various Artists"
             } else {
                 album.artist
@@ -52,9 +52,9 @@ sealed class AlbumUiItem {
     }
 
     @Composable
-    fun ListItem(onClick: () -> Unit) {
-        val displayArtist = remember(album.artist) {
-            if (album.artist.isBlank() || album.artist.equals("Unknown Artist", ignoreCase = true)) {
+    fun ListItem(onClick: () -> Unit, customArtist: String? = null) {
+        val displayArtist = remember(album.artist, customArtist) {
+            customArtist ?: if (album.artist.isBlank() || album.artist.equals("Unknown Artist", ignoreCase = true)) {
                 "Various Artists"
             } else {
                 album.artist
@@ -101,10 +101,11 @@ sealed class AlbumUiItem {
 
     @Composable
     protected fun AlbumImage(modifier: Modifier) {
+        val uiColor = MaterialTheme.colorScheme.surfaceVariant
         Surface(
             modifier = modifier,
             shape = getImageShape(),
-            color = MaterialTheme.colorScheme.surfaceVariant
+            color = uiColor
         ) {
             SubcomposeAsyncImage(
                 model = album.imageUrl,
@@ -118,7 +119,7 @@ sealed class AlbumUiItem {
                 error = {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = album.title.firstOrNull()?.uppercase() ?: "?",
+                            text = album.title.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?",
                             style = MaterialTheme.typography.displayLarge
                         )
                     }

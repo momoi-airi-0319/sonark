@@ -83,16 +83,26 @@ class DriveMusicProvider : MusicProvider {
     private suspend fun processAlbumFolder(service: Drive, albumFolder: File, songs: MutableList<SyncSong>) {
         val files = listFiles(service, albumFolder.id)
         val coverInfo = extractCoverInfo(files)
+        val (folderArtist, folderAlbum) = parseFolderName(albumFolder.name)
         
         val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
         if (cueFiles.isNotEmpty()) {
             cueFiles.forEachIndexed { index, cueFile ->
-                songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, coverInfo, discNumber = index + 1))
+                songs.addAll(parseCueAlbum(service, cueFile, files, folderAlbum, folderArtist, coverInfo, discNumber = index + 1))
             }
         } else {
             files.filter { isAudioFile(it) }.forEach { file ->
-                songs.add(parseSong(file, albumFolder.id, albumFolder.name, coverInfo))
+                songs.add(parseSong(file, albumFolder.id, folderAlbum, folderArtist, coverInfo))
             }
+        }
+    }
+
+    private fun parseFolderName(folderName: String): Pair<String, String> {
+        val parts = folderName.split(" - ", limit = 2)
+        return if (parts.size == 2) {
+            parts[0].trim() to parts[1].trim()
+        } else {
+            "Various Artists" to folderName.trim()
         }
     }
 
@@ -255,13 +265,14 @@ class DriveMusicProvider : MusicProvider {
         cueFile: File,
         allFiles: List<File>,
         albumName: String,
+        artistName: String,
         coverInfo: CoverInfo,
         discNumber: Int = 0
     ): List<SyncSong> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<SyncSong>()
         try {
             val content = service.files().get(cueFile.id).executeMediaAsInputStream().bufferedReader().use { it.readText() }
-            val parser = CueParser(content, allFiles, cueFile.id, albumName, coverInfo, discNumber, id)
+            val parser = CueParser(content, allFiles, cueFile.id, albumName, artistName, coverInfo, discNumber, id)
             songs.addAll(parser.parse())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse CUE file ${cueFile.name}", e)
@@ -269,13 +280,13 @@ class DriveMusicProvider : MusicProvider {
         songs
     }
 
-    private fun parseSong(file: File, albumId: String, albumName: String, coverInfo: CoverInfo): SyncSong {
+    private fun parseSong(file: File, albumId: String, albumName: String, artistName: String, coverInfo: CoverInfo): SyncSong {
         val (disc, track, title) = FilenameParser.parse(file.name)
 
         val song = Song(
             id = file.id,
             title = title,
-            artist = "Unknown Artist",
+            artist = artistName,
             album = albumName,
             duration = 0,
             discNumber = disc,
@@ -302,6 +313,7 @@ class DriveMusicProvider : MusicProvider {
         private val allFiles: List<File>,
         private val cueFileId: String,
         private val albumName: String,
+        private val defaultArtist: String,
         private val coverInfo: CoverInfo,
         private val discNumber: Int,
         private val providerId: String
@@ -309,7 +321,7 @@ class DriveMusicProvider : MusicProvider {
         fun parse(): List<SyncSong> {
             val tempSongs = mutableListOf<SyncSong>()
             var currentAudioFile: File? = null
-            var albumArtist = "Unknown Artist"
+            var albumArtist = defaultArtist
             var currentTrackTitle = ""
             var currentTrackArtist = ""
             var currentTrackNumber = ""
