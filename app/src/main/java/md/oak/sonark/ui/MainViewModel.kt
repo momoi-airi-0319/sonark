@@ -24,7 +24,7 @@ enum class UIState {
 
 class MainViewModel(
     private val repository: MusicRepository,
-    private val accountRepository: AccountRepository
+    private val accountRepository: AccountRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UIState.LOADING)
@@ -32,7 +32,11 @@ class MainViewModel(
 
     val accounts = accountRepository.accounts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val storageQuota = accountRepository.storageQuota.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val isGuestMode = repository.isGuestMode().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val isGuestMode = repository.isGuestMode().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5000),
+        initialValue = false,
+    )
 
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
@@ -57,7 +61,8 @@ class MainViewModel(
         .map { (normalizedTarget, normalizedGroup) ->
             val variations = normalizedGroup.groupBy { it.first }
             
-            val bestName = variations.keys.sortedWith(
+            val bestName = variations.keys.asSequence()
+                .sortedWith(
                 compareByDescending<String> { name ->
                     allAlbums.count { album -> album.artist == name }
                 }.thenByDescending { name ->
@@ -86,8 +91,8 @@ class MainViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun createAlbumDownloadItem(albumId: String, albumSyncSongs: List<SyncSong>): AlbumDownloadItem? {
-        val activeSyncSongs = albumSyncSongs.filter { 
-            it.downloadStatus != DownloadStatus.COMPLETED && it.downloadStatus != DownloadStatus.NONE 
+        val activeSyncSongs = albumSyncSongs.filter {
+            (it.downloadStatus != DownloadStatus.COMPLETED) && (it.downloadStatus != DownloadStatus.NONE)
         }
         if (activeSyncSongs.isEmpty()) return null
         

@@ -33,19 +33,17 @@ fun ArtistScreen(
     onSongClick: (SyncSong) -> Unit,
     onBackClick: () -> Unit,
     onLoadMetadata: (List<SyncSong>) -> Unit,
-    onDownloadSongs: (List<SyncSong>) -> Unit
+    onDownloadSongs: (List<SyncSong>) -> Unit,
 ) {
-    BackHandler {
-        onBackClick()
-    }
-    var showDetails by remember { mutableStateOf(false) }
+    BackHandler(onBack = onBackClick)
+    var showDetails by remember { mutableStateOf(value = false) }
 
-    LaunchedEffect(featuredSongs) {
+    LaunchedEffect(key1 = featuredSongs) {
         onDownloadSongs(featuredSongs)
     }
 
     val songsToLoadMetadata = remember(featuredSongs) {
-        featuredSongs.filter { it.localPath != null && it.song.artist == "Unknown Artist" }
+        featuredSongs.filter { (it.localPath != null) && (it.song.artist == "Unknown Artist") }
     }
     LaunchedEffect(songsToLoadMetadata) {
         if (songsToLoadMetadata.isNotEmpty()) {
@@ -65,7 +63,7 @@ fun ArtistScreen(
             artistName = artistName,
             albumCount = personalAlbums.size,
             songCount = personalAlbums.sumOf { it.songs.size } + featuredSongs.size,
-            onDismiss = { showDetails = false }
+            onDismiss = { showDetails = false },
         )
     }
 

@@ -4,6 +4,9 @@ import kotlinx.serialization.Serializable
 import androidx.navigation3.runtime.NavKey
 
 @Serializable
+data object HomeKey : NavKey
+
+@Serializable
 data object LibraryKey : NavKey
 
 @Serializable

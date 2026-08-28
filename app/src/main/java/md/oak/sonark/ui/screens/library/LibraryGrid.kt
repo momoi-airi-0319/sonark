@@ -23,7 +23,6 @@ import md.oak.sonark.ui.UIState
 import md.oak.sonark.ui.components.EmptyState
 import md.oak.sonark.ui.model.AlbumUiItem
 import md.oak.sonark.ui.theme.SonarkTheme
-import md.oak.sonark.ui.utils.ArtistUtils
 
 @Composable
 fun LibraryGrid(
@@ -32,7 +31,7 @@ fun LibraryGrid(
     onAlbumClick: (Album) -> Unit,
     onRefresh: () -> Unit,
     contentPadding: PaddingValues,
-    focusedArtist: String? = null
+    focusedArtist: String? = null,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState) {
@@ -85,7 +84,7 @@ fun LibraryGrid(
                             val uiItem = remember(album) { AlbumUiItem.from(album) }
                             uiItem.GridItem(
                                 onClick = { onAlbumClick(album) },
-                                customArtist = if (focusedArtist != null && album.artist != focusedArtist) {
+                                customArtist = if (focusedArtist != null && (album.artist != focusedArtist)) {
                                     focusedArtist
                                 } else null
                             )

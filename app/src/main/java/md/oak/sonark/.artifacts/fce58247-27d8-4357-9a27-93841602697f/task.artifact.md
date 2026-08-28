@@ -1,0 +1,4 @@
+- [ ] Define `HomeKey` in `Destinations.kt`
+- [ ] Create `HomeScreen.kt` placeholder
+- [ ] Add `HomeKey` entry in `NavGraph.kt`
+- [ ] Update `MainActivity.kt` to include Home in `topLevelRoutes` and `SonarkBottomBar`

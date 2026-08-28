@@ -2,7 +2,6 @@ package md.oak.sonark.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,24 +13,17 @@ import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.Artist
 import md.oak.sonark.data.model.SyncSong
-import md.oak.sonark.data.repository.StorageQuota
-import md.oak.sonark.data.repository.UserAccount
-import md.oak.sonark.ui.SortOrder
 import md.oak.sonark.ui.UIState
 import md.oak.sonark.ui.components.FloatingNavItem
-import md.oak.sonark.ui.screens.library.AccountPopDialog
-import md.oak.sonark.ui.screens.library.FloatingTopBar
 import md.oak.sonark.ui.screens.library.LibraryArtists
 import md.oak.sonark.ui.screens.library.LibraryGrid
 import md.oak.sonark.ui.screens.library.LibrarySongs
 import md.oak.sonark.ui.theme.SonarkTheme
 
 enum class LibraryTab(val label: String, val icon: ImageVector) {
-    Playlists("Playlists", Icons.AutoMirrored.Rounded.PlaylistPlay),
     Artists("Artists", Icons.Rounded.Mic),
     Albums("Albums", Icons.Rounded.Album),
-    Songs("Songs", Icons.Rounded.MusicNote),
-    Recent("Recent", Icons.Rounded.Schedule)
+    Songs("Songs", Icons.Rounded.MusicNote)
 }
 
 @Composable
@@ -40,32 +32,15 @@ fun LibraryScreen(
     albums: List<Album>,
     artists: List<Artist>,
     songs: List<SyncSong>,
-    activeAccount: UserAccount?,
-    otherAccounts: List<UserAccount>,
-    storageQuota: StorageQuota?,
-    isGuestMode: Boolean,
-    downloadQueueSize: Int,
     currentSong: SyncSong?,
     isPlaying: Boolean,
     progress: Float,
-    sortOrder: SortOrder,
-    onSortOrderChange: (SortOrder) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onArtistClick: (Artist) -> Unit,
     onSongClick: (SyncSong) -> Unit,
-    onPlayerClick: () -> Unit,
     onRefresh: () -> Unit,
-    onQueueClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onAddAccountClick: () -> Unit,
-    onManageAccountsClick: () -> Unit,
-    onGuestModeClick: () -> Unit,
-    onSignOutClick: () -> Unit,
-    onAccountClick: (UserAccount) -> Unit,
-    onUrlClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    var showAccountDialog by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(LibraryTab.Albums) }
 
     Scaffold(
@@ -122,32 +97,7 @@ fun LibraryScreen(
                         )
                     )
                 }
-                else -> {
-                    // Default to Album grid for now for other tabs
-                    LibraryGrid(
-                        uiState = uiState,
-                        albums = albums,
-                        onAlbumClick = onAlbumClick,
-                        onRefresh = onRefresh,
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            top = topPadding,
-                            end = 16.dp,
-                            bottom = bottomPadding
-                        )
-                    )
-                }
             }
-
-            FloatingTopBar(
-                currentSong = currentSong,
-                isPlaying = isPlaying,
-                progress = progress,
-                activeAccount = activeAccount,
-                isGuestMode = isGuestMode,
-                onPlayerClick = onPlayerClick,
-                onAccountClick = { showAccountDialog = true }
-            )
 
             LibrarySubNavigation(
                 selectedTab = selectedTab,
@@ -155,49 +105,6 @@ fun LibraryScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
-    }
-
-    if (showAccountDialog) {
-        AccountPopDialog(
-            activeAccount = activeAccount,
-            otherAccounts = otherAccounts,
-            storageQuota = storageQuota,
-            isGuestMode = isGuestMode,
-            downloadQueueSize = downloadQueueSize,
-            sortOrder = sortOrder,
-            onSortOrderChange = onSortOrderChange,
-            onRefresh = onRefresh,
-            onQueueClick = {
-                showAccountDialog = false
-                onQueueClick()
-            },
-            onSettingsClick = {
-                showAccountDialog = false
-                onSettingsClick()
-            },
-            onAddAccountClick = {
-                showAccountDialog = false
-                onAddAccountClick()
-            },
-            onManageAccountsClick = {
-                showAccountDialog = false
-                onManageAccountsClick()
-            },
-            onGuestModeClick = {
-                showAccountDialog = false
-                onGuestModeClick()
-            },
-            onSignOutClick = {
-                showAccountDialog = false
-                onSignOutClick()
-            },
-            onAccountClick = {
-                showAccountDialog = false
-                onAccountClick(it)
-            },
-            onUrlClick = onUrlClick,
-            onDismissRequest = { showAccountDialog = false }
-        )
     }
 }
 
@@ -245,29 +152,13 @@ fun LibraryScreenLoadingPreview() {
             albums = emptyList(),
             artists = emptyList(),
             songs = emptyList(),
-            activeAccount = null,
-            otherAccounts = emptyList(),
-            storageQuota = null,
-            isGuestMode = false,
-            downloadQueueSize = 0,
             currentSong = null,
             isPlaying = false,
             progress = 0f,
-            sortOrder = SortOrder.TITLE,
-            onSortOrderChange = {},
             onAlbumClick = {},
             onArtistClick = {},
             onSongClick = {},
-            onPlayerClick = {},
-            onRefresh = {},
-            onQueueClick = {},
-            onSettingsClick = {},
-            onAddAccountClick = {},
-            onManageAccountsClick = {},
-            onGuestModeClick = {},
-            onSignOutClick = {},
-            onAccountClick = {},
-            onUrlClick = {}
+            onRefresh = {}
         )
     }
 }

@@ -41,9 +41,11 @@ class DriveMusicProvider : MusicProvider {
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .dispatcher(Dispatcher().apply {
-            maxRequestsPerHost = MAX_REQUESTS_PER_HOST
-        })
+        .dispatcher(
+            Dispatcher().apply {
+                maxRequestsPerHost = MAX_REQUESTS_PER_HOST
+            },
+        )
         .build()
 
     private var driveService: Drive? = null
@@ -85,7 +87,10 @@ class DriveMusicProvider : MusicProvider {
         val coverInfo = extractCoverInfo(files)
         val (folderArtist, folderAlbum) = parseFolderName(albumFolder.name)
         
-        val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
+        val cueFiles = files.asSequence()
+            .filter { it.name.endsWith(".cue", ignoreCase = true) }
+            .sortedBy { it.name }
+            .toList()
         if (cueFiles.isNotEmpty()) {
             cueFiles.forEachIndexed { index, cueFile ->
                 songs.addAll(parseCueAlbum(service, cueFile, files, folderAlbum, folderArtist, coverInfo, discNumber = index + 1))
@@ -216,7 +221,7 @@ class DriveMusicProvider : MusicProvider {
 
     override fun getAuthHeaders(): Map<String, String> {
         val token = try {
-            credential?.getToken()
+            credential?.token
         } catch (e: Exception) {
             Log.w(TAG, "Failed to get token", e)
             null

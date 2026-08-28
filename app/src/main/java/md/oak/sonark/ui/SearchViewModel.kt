@@ -11,11 +11,11 @@ import md.oak.sonark.ui.utils.ArtistUtils
 data class SearchUiState(
     val songs: List<SyncSong> = emptyList(),
     val albums: List<Album> = emptyList(),
-    val artists: List<String> = emptyList()
+    val artists: List<String> = emptyList(),
 )
 
 class SearchViewModel(
-    private val repository: MusicRepository
+    repository: MusicRepository,
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -28,14 +28,19 @@ class SearchViewModel(
     ) { songs, albums, query ->
         if (query.isBlank()) return@combine SearchUiState()
 
-        val filteredSongs = songs.filter { it.song.title.contains(query, ignoreCase = true) }
+        val filteredSongs = songs.asSequence()
+            .filter { it.song.title.contains(query, ignoreCase = true) }
             .sortedBy { it.song.title.lowercase() }
+            .toList()
 
-        val filteredAlbums = albums.filter { it.title.contains(query, ignoreCase = true) }
+        val filteredAlbums = albums.asSequence()
+            .filter { it.title.contains(query, ignoreCase = true) }
             .sortedBy { it.title.lowercase() }
+            .toList()
 
-        val filteredArtists = (songs.flatMap { ArtistUtils.splitArtists(it.song.artist) } + 
+        val filteredArtists = (songs.flatMap { ArtistUtils.splitArtists(it.song.artist) } +
                                albums.flatMap { ArtistUtils.splitArtists(it.artist) })
+            .asSequence()
             .filter { it.contains(query, ignoreCase = true) }
             .groupBy { ArtistUtils.normalize(it) }
             .map { (_, variations) ->

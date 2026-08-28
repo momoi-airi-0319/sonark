@@ -52,19 +52,17 @@ fun AlbumScreen(
     onBackClick: () -> Unit,
     onLoadMetadata: (List<SyncSong>) -> Unit,
     onDownloadSongs: (List<SyncSong>) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    BackHandler {
-        onBackClick()
-    }
-    var showDetails by remember { mutableStateOf(false) }
+    BackHandler(onBack = onBackClick)
+    var showDetails by remember { mutableStateOf(value = false) }
 
-    LaunchedEffect(songs) {
+    LaunchedEffect(key1 = songs) {
         onDownloadSongs(songs)
     }
 
-    val songsToLoadMetadata = remember(songs) { 
-        songs.filter { it.localPath != null && it.song.artist == "Unknown Artist" } 
+    val songsToLoadMetadata = remember(songs) {
+        songs.filter { (it.localPath != null) && (it.song.artist == "Unknown Artist") }
     }
     LaunchedEffect(songsToLoadMetadata) {
         if (songsToLoadMetadata.isNotEmpty()) {
@@ -76,7 +74,7 @@ fun AlbumScreen(
         AlbumDetailsDialog(
             album = album,
             songs = songs,
-            onDismiss = { showDetails = false }
+            onDismiss = { showDetails = false },
         )
     }
 

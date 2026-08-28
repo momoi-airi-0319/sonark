@@ -27,7 +27,7 @@ fun LibrarySongs(
     progress: Float,
     onSongClick: (SyncSong) -> Unit,
     onRefresh: () -> Unit,
-    contentPadding: PaddingValues
+    contentPadding: PaddingValues,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState) {

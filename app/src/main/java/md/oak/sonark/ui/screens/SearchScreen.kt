@@ -51,7 +51,7 @@ fun SearchScreen(
     onSongClick: (SyncSong) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onArtistClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
@@ -84,7 +84,7 @@ fun SearchContent(
     onSongClick: (SyncSong) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onArtistClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Scaffold(
         topBar = {
@@ -168,7 +168,10 @@ fun SearchResultsList(
         if (uiState.artists.isNotEmpty()) {
             item { SearchSectionHeader("Artists") }
             items(uiState.artists) { artist ->
-                ArtistListItem(artist = artist, onClick = { onArtistClick(artist) })
+                ArtistListItem(
+                    artist = artist,
+                    onClick = { onArtistClick(artist) },
+                )
             }
         }
 

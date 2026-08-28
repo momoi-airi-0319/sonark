@@ -31,26 +31,25 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val controller: MediaController? get() = if (controllerFuture?.isDone == true) controllerFuture?.get() else null
 
-    private val _isPlaying = MutableStateFlow(false)
+    private val _isPlaying = MutableStateFlow(value = false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
-    private val _currentSong = MutableStateFlow<SyncSong?>(null)
+    private val _currentSong = MutableStateFlow<SyncSong?>(value = null)
     val currentSong: StateFlow<SyncSong?> = _currentSong.asStateFlow()
 
-    private val _playbackProgress = MutableStateFlow(0L)
+    private val _playbackProgress = MutableStateFlow(value = 0L)
     val playbackProgress: StateFlow<Long> = _playbackProgress.asStateFlow()
 
-    private val _duration = MutableStateFlow(0L)
+    private val _duration = MutableStateFlow(value = 0L)
     val duration: StateFlow<Long> = _duration.asStateFlow()
 
-    private val _shuffleEnabled = MutableStateFlow(false)
+    private val _shuffleEnabled = MutableStateFlow(value = false)
     val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
 
-    private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
+    private val _repeatMode = MutableStateFlow(value = Player.REPEAT_MODE_OFF)
     val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
 
-    private val _queue = MutableStateFlow<List<SyncSong>>(emptyList())
-    val queue: StateFlow<List<SyncSong>> = _queue.asStateFlow()
+    private val _queue = MutableStateFlow<List<SyncSong>>(value = emptyList())
 
     private var progressJob: Job? = null
     private var lastSeekTime = 0L
@@ -58,9 +57,12 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     init {
         val sessionToken = SessionToken(application, ComponentName(application, PlaybackService::class.java))
         controllerFuture = MediaController.Builder(application, sessionToken).buildAsync()
-        controllerFuture?.addListener({
-            setupController()
-        }, MoreExecutors.directExecutor())
+        controllerFuture?.addListener(
+            {
+                setupController()
+            },
+            MoreExecutors.directExecutor(),
+        )
     }
 
     private fun setupController() {
@@ -105,7 +107,7 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         if (playerDuration <= 0) return
         
         val isCue = _currentSong.value?.song?.type == AlbumType.CUE
-        if (!isCue || _duration.value <= 0) {
+        if (!isCue || (_duration.value <= 0)) {
             _duration.value = playerDuration
         }
     }

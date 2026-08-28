@@ -25,7 +25,7 @@ class DownloadManager(
     context: Context,
     private val songDao: SongDao,
     private val albumDao: AlbumDao,
-    private val repository: MusicRepository
+    private val repository: MusicRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val musicDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "sonark_music").apply { if (!exists()) mkdirs() }
@@ -46,7 +46,8 @@ class DownloadManager(
         songDao.getSongsToDownloadFlow().collect { entities ->
             // Use a simple priority queue: smallest files first.
             // With correct file sizes, this naturally interleaves tracks from different albums.
-            entities.sortedBy { it.size }
+            entities.asSequence()
+                .sortedBy { it.size }
                 .distinctBy { it.data }
                 .forEach { entity ->
                     processDownload(entity.data) {
@@ -171,7 +172,7 @@ class DownloadManager(
     }
 
     private suspend fun isAlreadyDownloaded(file: File, expectedHash: String?): Boolean {
-        if (!file.exists() || expectedHash == null) return false
+        if (!file.exists() || (expectedHash == null)) return false
         return withContext(Dispatchers.IO) {
             Utils.calculateMd5(file) == expectedHash
         }

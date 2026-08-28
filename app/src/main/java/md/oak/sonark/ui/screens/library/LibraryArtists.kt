@@ -28,7 +28,7 @@ fun LibraryArtists(
     artists: List<Artist>,
     onArtistClick: (Artist) -> Unit,
     onRefresh: () -> Unit,
-    contentPadding: PaddingValues
+    contentPadding: PaddingValues,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState) {
@@ -80,7 +80,7 @@ fun LibraryArtists(
                         items(artists, key = { it.name }) { artist ->
                             ArtistGridItem(
                                 artist = artist,
-                                onClick = { onArtistClick(artist) }
+                                onClick = { onArtistClick(artist) },
                             )
                         }
                     }
@@ -142,7 +142,7 @@ private fun ArtistGridItem(
             if (artist.albumCount > 0) {
                 append(if (artist.albumCount == 1) "1 Album" else "${artist.albumCount} Albums")
             }
-            if (artist.albumCount > 0 && artist.songCount > 0) {
+            if ((artist.albumCount > 0) && (artist.songCount > 0)) {
                 append(" • ")
             }
             if (artist.songCount > 0) {

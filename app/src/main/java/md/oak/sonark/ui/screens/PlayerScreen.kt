@@ -45,12 +45,10 @@ fun PlayerScreen(
     onToggleRepeatMode: () -> Unit,
     onBackClick: () -> Unit,
     onAlbumClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    BackHandler {
-        onBackClick()
-    }
-    var showSongDetails by remember { mutableStateOf(false) }
+    BackHandler(onBack = onBackClick)
+    var showSongDetails by remember { mutableStateOf(value = false) }
 
     Scaffold(
         topBar = {
@@ -139,10 +137,10 @@ fun PlayerScreen(
             }
         }
 
-        if (showSongDetails && song != null) {
+        if (showSongDetails && (song != null)) {
             SongDetailsDialog(
                 song = song,
-                onDismiss = { showSongDetails = false }
+                onDismiss = { showSongDetails = false },
             )
         }
     }
