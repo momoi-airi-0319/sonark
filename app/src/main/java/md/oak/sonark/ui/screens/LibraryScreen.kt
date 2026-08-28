@@ -13,6 +13,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.data.repository.StorageQuota
+import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.SortOrder
 import md.oak.sonark.ui.UIState
 import md.oak.sonark.ui.components.FloatingNavItem
@@ -33,7 +35,10 @@ enum class LibraryTab(val label: String, val icon: ImageVector) {
 fun LibraryScreen(
     uiState: UIState,
     albums: List<Album>,
-    googleAccountName: String?,
+    activeAccount: UserAccount?,
+    otherAccounts: List<UserAccount>,
+    storageQuota: StorageQuota?,
+    isGuestMode: Boolean,
     downloadQueueSize: Int,
     currentSong: SyncSong?,
     isPlaying: Boolean,
@@ -45,6 +50,12 @@ fun LibraryScreen(
     onRefresh: () -> Unit,
     onQueueClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onAddAccountClick: () -> Unit,
+    onManageAccountsClick: () -> Unit,
+    onGuestModeClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onAccountClick: (UserAccount) -> Unit,
+    onUrlClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showAccountDialog by remember { mutableStateOf(false) }
@@ -66,7 +77,8 @@ fun LibraryScreen(
                 currentSong = currentSong,
                 isPlaying = isPlaying,
                 progress = progress,
-                googleAccountName = googleAccountName,
+                activeAccount = activeAccount,
+                isGuestMode = isGuestMode,
                 onPlayerClick = onPlayerClick,
                 onAccountClick = { showAccountDialog = true }
             )
@@ -76,7 +88,7 @@ fun LibraryScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 68.dp + 12.dp) // Positioned above the main nav bar (52dp + 16dp + 12dp gap)
+                    .padding(bottom = 68.dp + 12.dp) // Positioned above the main nav bar
             ) {
                 Surface(
                     shape = androidx.compose.foundation.shape.CircleShape,
@@ -105,7 +117,10 @@ fun LibraryScreen(
 
     if (showAccountDialog) {
         AccountPopDialog(
-            googleAccountName = googleAccountName,
+            activeAccount = activeAccount,
+            otherAccounts = otherAccounts,
+            storageQuota = storageQuota,
+            isGuestMode = isGuestMode,
             downloadQueueSize = downloadQueueSize,
             sortOrder = sortOrder,
             onSortOrderChange = onSortOrderChange,
@@ -118,6 +133,27 @@ fun LibraryScreen(
                 showAccountDialog = false
                 onSettingsClick()
             },
+            onAddAccountClick = {
+                showAccountDialog = false
+                onAddAccountClick()
+            },
+            onManageAccountsClick = {
+                showAccountDialog = false
+                onManageAccountsClick()
+            },
+            onGuestModeClick = {
+                showAccountDialog = false
+                onGuestModeClick()
+            },
+            onSignOutClick = {
+                showAccountDialog = false
+                onSignOutClick()
+            },
+            onAccountClick = {
+                showAccountDialog = false
+                onAccountClick(it)
+            },
+            onUrlClick = onUrlClick,
             onDismissRequest = { showAccountDialog = false }
         )
     }
@@ -130,7 +166,10 @@ fun LibraryScreenLoadingPreview() {
         LibraryScreen(
             uiState = UIState.LOADING,
             albums = emptyList(),
-            googleAccountName = null,
+            activeAccount = null,
+            otherAccounts = emptyList(),
+            storageQuota = null,
+            isGuestMode = false,
             downloadQueueSize = 0,
             currentSong = null,
             isPlaying = false,
@@ -141,53 +180,13 @@ fun LibraryScreenLoadingPreview() {
             onPlayerClick = {},
             onRefresh = {},
             onQueueClick = {},
-            onSettingsClick = {}
-        )
-    }
-}
-
-@Preview(showBackground = true, device = "spec:width=411dp,height=891dp")
-@Composable
-fun LibraryScreenEmptyPreview() {
-    SonarkTheme {
-        LibraryScreen(
-            uiState = UIState.EMPTY,
-            albums = emptyList(),
-            googleAccountName = "user@gmail.com",
-            downloadQueueSize = 0,
-            currentSong = null,
-            isPlaying = false,
-            progress = 0f,
-            sortOrder = SortOrder.TITLE,
-            onSortOrderChange = {},
-            onAlbumClick = {},
-            onPlayerClick = {},
-            onRefresh = {},
-            onQueueClick = {},
-            onSettingsClick = {}
-        )
-    }
-}
-
-@Preview(showBackground = true, device = "spec:width=411dp,height=891dp")
-@Composable
-fun LibraryScreenUnauthenticatedPreview() {
-    SonarkTheme {
-        LibraryScreen(
-            uiState = UIState.UNAUTHENTICATED,
-            albums = emptyList(),
-            googleAccountName = null,
-            downloadQueueSize = 0,
-            currentSong = null,
-            isPlaying = false,
-            progress = 0f,
-            sortOrder = SortOrder.TITLE,
-            onSortOrderChange = {},
-            onAlbumClick = {},
-            onPlayerClick = {},
-            onRefresh = {},
-            onQueueClick = {},
-            onSettingsClick = {}
+            onSettingsClick = {},
+            onAddAccountClick = {},
+            onManageAccountsClick = {},
+            onGuestModeClick = {},
+            onSignOutClick = {},
+            onAccountClick = {},
+            onUrlClick = {}
         )
     }
 }

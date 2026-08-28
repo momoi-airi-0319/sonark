@@ -1,191 +1,102 @@
 package md.oak.sonark.ui.screens.library
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import md.oak.sonark.data.repository.StorageQuota
+import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.SortOrder
-import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
-import androidx.compose.ui.tooling.preview.Preview
-import md.oak.sonark.ui.theme.SonarkTheme
+import md.oak.sonark.ui.components.UserAvatar
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountPopDialog(
-    googleAccountName: String?,
+    activeAccount: UserAccount?,
+    otherAccounts: List<UserAccount>,
+    storageQuota: StorageQuota?,
+    isGuestMode: Boolean,
     downloadQueueSize: Int,
     sortOrder: SortOrder,
     onSortOrderChange: (SortOrder) -> Unit,
     onRefresh: () -> Unit,
     onQueueClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onAddAccountClick: () -> Unit,
+    onManageAccountsClick: () -> Unit,
+    onGuestModeClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onAccountClick: (UserAccount) -> Unit,
+    onUrlClick: (String) -> Unit,
     onDismissRequest: () -> Unit
 ) {
-    val density = LocalDensity.current
-    val screenHeightPx = with(density) { 1000.dp.toPx() } // Fallback baseline
-    val initialOffset = with(density) { 80.dp.toPx() }
-
-    val offsetY = remember { Animatable(initialOffset) }
-    val scope = rememberCoroutineScope()
-    var isVisible by remember { mutableStateOf(false) }
-
-    val scrimAlpha by animateFloatAsState(
-        targetValue = if (isVisible) 0.2f else 0f,
-        animationSpec = tween(durationMillis = 50, easing = FastOutSlowInEasing),
-        label = "ScrimAlpha"
-    )
-
-    LaunchedEffect(Unit) {
-        isVisible = true
-    }
-
-    LaunchedEffect(isVisible) {
-        if (!isVisible) {
-            delay(50.milliseconds)
-            onDismissRequest()
-        }
-    }
-
-    Dialog(
-        onDismissRequest = { isVisible = false },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = scrimAlpha * (1f - (offsetY.value - initialOffset) / screenHeightPx).coerceIn(0f, 1f)))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { isVisible = false }
-                )
-        ) {
-            AnimatedVisibility(
-                visible = isVisible,
-                enter = scaleIn(
-                    initialScale = 0.8f,
-                    transformOrigin = TransformOrigin(0.9f, 0f),
-                    animationSpec = tween(50, easing = FastOutSlowInEasing)
-                ) + fadeIn(animationSpec = tween(50, easing = FastOutSlowInEasing)),
-                exit = scaleOut(
-                    targetScale = 0.8f,
-                    transformOrigin = TransformOrigin(0.9f, 0f),
-                    animationSpec = tween(50, easing = FastOutSlowInEasing)
-                ) + fadeOut(animationSpec = tween(50, easing = FastOutSlowInEasing)),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .offset { IntOffset(0, offsetY.value.roundToInt()) }
-                        .draggable(
-                            orientation = Orientation.Vertical,
-                            state = rememberDraggableState { delta ->
-                                scope.launch {
-                                    offsetY.snapTo((offsetY.value + delta).coerceAtLeast(0f))
-                                }
-                            },
-                            onDragStopped = { velocity ->
-                                if (offsetY.value > initialOffset + 100.dp.value || velocity > 500f) {
-                                    scope.launch {
-                                        offsetY.animateTo(screenHeightPx, tween(200, easing = FastOutSlowInEasing))
-                                        isVisible = false
-                                    }
-                                } else {
-                                    scope.launch {
-                                        offsetY.animateTo(initialOffset, tween(200, easing = FastOutSlowInEasing))
-                                    }
-                                }
-                            }
-                        )
-                ) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { }
-                            ),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        tonalElevation = 6.dp,
-                        shadowElevation = 2.dp
-                    ) {
-                        AccountDialogContent(
-                            googleAccountName = googleAccountName,
-                            downloadQueueSize = downloadQueueSize,
-                            sortOrder = sortOrder,
-                            onSortOrderChange = onSortOrderChange,
-                            onRefresh = onRefresh,
-                            onQueueClick = onQueueClick,
-                            onSettingsClick = onSettingsClick,
-                            onCloseClick = { isVisible = false }
-                        )
-                    }
-                }
-            }
-        }
+        AccountDialogContent(
+            activeAccount = activeAccount,
+            otherAccounts = otherAccounts,
+            storageQuota = storageQuota,
+            isGuestMode = isGuestMode,
+            downloadQueueSize = downloadQueueSize,
+            sortOrder = sortOrder,
+            onSortOrderChange = onSortOrderChange,
+            onRefresh = onRefresh,
+            onQueueClick = onQueueClick,
+            onSettingsClick = onSettingsClick,
+            onAddAccountClick = onAddAccountClick,
+            onManageAccountsClick = onManageAccountsClick,
+            onGuestModeClick = onGuestModeClick,
+            onSignOutClick = onSignOutClick,
+            onAccountClick = onAccountClick,
+            onUrlClick = onUrlClick,
+            onCloseClick = onDismissRequest
+        )
     }
 }
 
 @Composable
 private fun AccountDialogContent(
-    googleAccountName: String?,
+    activeAccount: UserAccount?,
+    otherAccounts: List<UserAccount>,
+    storageQuota: StorageQuota?,
+    isGuestMode: Boolean,
     downloadQueueSize: Int,
     sortOrder: SortOrder,
     onSortOrderChange: (SortOrder) -> Unit,
     onRefresh: () -> Unit,
     onQueueClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onAddAccountClick: () -> Unit,
+    onManageAccountsClick: () -> Unit,
+    onGuestModeClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onAccountClick: (UserAccount) -> Unit,
+    onUrlClick: (String) -> Unit,
     onCloseClick: () -> Unit
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 16.dp)
+            .padding(bottom = 32.dp)
             .verticalScroll(rememberScrollState())
     ) {
         Box(
@@ -206,80 +117,248 @@ private fun AccountDialogContent(
         }
 
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            // Main Account Area
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isExpanded = !isExpanded }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        UserAvatar(
+                            user = activeAccount,
+                            size = 48.dp,
+                            isGuest = isGuestMode
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = activeAccount?.name ?: if (isGuestMode) "Guest User" else "Not Signed In",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = activeAccount?.email ?: "Sign in to sync your library",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (activeAccount?.isPro == true) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(4.dp),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Pro",
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (isExpanded) {
+                        otherAccounts.forEach { account ->
+                            AccountItem(account = account, onClick = { onAccountClick(account) })
+                        }
+                        
+                        AccountActionItem(
+                            icon = Icons.Default.DoNotDisturbOn,
+                            title = "Use without an account",
+                            onClick = onGuestModeClick
+                        )
+                        AccountActionItem(
+                            icon = Icons.Default.PersonAdd,
+                            title = "Add another account",
+                            onClick = onAddAccountClick
+                        )
+                        if (activeAccount != null) {
+                            AccountActionItem(
+                                icon = Icons.Default.Close,
+                                title = "Sign out of this account",
+                                onClick = onSignOutClick
+                            )
+                        }
+                        AccountActionItem(
+                            icon = Icons.Default.ManageAccounts,
+                            title = "Manage accounts on this device",
+                            onClick = onManageAccountsClick
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { onUrlClick("https://myaccount.google.com/") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Text("Manage your Google Account", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+
+            // Storage Section
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Cloud,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = if (storageQuota != null) {
+                                "${formatSize(storageQuota.usedBytes)} used of ${formatSize(storageQuota.totalBytes)}"
+                            } else "Storage information unavailable",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    
+                    if (storageQuota != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { storageQuota.usedPercentage },
+                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { onUrlClick("https://one.google.com/storage") }) {
+                            Text("Get storage", style = MaterialTheme.typography.labelLarge)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(onClick = { onUrlClick("https://photos.google.com/quotamanagement") }) {
+                            Text("Clean up storage", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+            }
+
+            // Backup Section
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(40.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.CloudOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Backup is off",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "To keep your music safe, back it up to your Google Account.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(
+                            onClick = { onUrlClick("https://photos.google.com/settings/backup") },
+                            modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                if (googleAccountName != null) {
-                                    Text(
-                                        text = googleAccountName.take(1).uppercase(),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                } else {
-                                    Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(28.dp))
-                                }
-                            }
+                            Text("Turn on backup", style = MaterialTheme.typography.labelLarge)
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = googleAccountName?.substringBefore("@") ?: "Not Connected", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                            Text(text = googleAccountName ?: "Sign in to sync your music", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-
-                    OutlinedButton(
-                        onClick = { },
-                        modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 16.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Text("管理您的 Sonark 账号", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
 
             HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
 
-            AccountDialogItem(icon = Icons.Default.Refresh, title = "刷新媒体库", onClick = { onRefresh(); onCloseClick() })
+            AccountDialogItem(icon = Icons.Default.Refresh, title = "Refresh Library", onClick = { onRefresh(); onCloseClick() })
 
             var showSortOptions by remember { mutableStateOf(false) }
-            AccountDialogItem(icon = Icons.Default.Settings, title = "排序方式：${if (sortOrder == SortOrder.TITLE) "标题" else "艺术家"}", onClick = { showSortOptions = !showSortOptions })
+            AccountDialogItem(icon = Icons.Default.Settings, title = "Sort by: ${if (sortOrder == SortOrder.TITLE) "Title" else "Artist"}", onClick = { showSortOptions = !showSortOptions })
             if (showSortOptions) {
                 Row(modifier = Modifier.padding(start = 48.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = sortOrder == SortOrder.TITLE, onClick = { onSortOrderChange(SortOrder.TITLE) }, label = { Text("标题") })
-                    FilterChip(selected = sortOrder == SortOrder.ARTIST, onClick = { onSortOrderChange(SortOrder.ARTIST) }, label = { Text("艺术家") })
+                    FilterChip(selected = sortOrder == SortOrder.TITLE, onClick = { onSortOrderChange(SortOrder.TITLE) }, label = { Text("Title") })
+                    FilterChip(selected = sortOrder == SortOrder.ARTIST, onClick = { onSortOrderChange(SortOrder.ARTIST) }, label = { Text("Artist") })
                 }
             }
 
-            AccountDialogItem(icon = Icons.Default.CloudDownload, title = "下载队列", badge = if (downloadQueueSize > 0) "$downloadQueueSize" else null, onClick = onQueueClick)
+            AccountDialogItem(icon = Icons.Default.CloudDownload, title = "Download Queue", badge = if (downloadQueueSize > 0) "$downloadQueueSize" else null, onClick = onQueueClick)
 
             HorizontalDivider()
 
-            AccountDialogItem(icon = Icons.Default.Settings, title = "设置", onClick = onSettingsClick)
-            AccountDialogItem(icon = Icons.AutoMirrored.Rounded.HelpOutline, title = "帮助与反馈", onClick = { })
+            AccountDialogItem(icon = Icons.Default.Settings, title = "Settings", onClick = onSettingsClick)
+            AccountDialogItem(icon = Icons.AutoMirrored.Rounded.HelpOutline, title = "Help & Feedback", onClick = { onUrlClick("https://support.google.com/") })
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "隐私权政策", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Privacy Policy", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { onUrlClick("https://policies.google.com/privacy") })
                 Text(text = " • ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = "服务条款", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Terms of Service", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.clickable { onUrlClick("https://policies.google.com/terms") })
             }
         }
+    }
+}
+
+@Composable
+fun AccountItem(account: UserAccount, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        UserAvatar(user = account, size = 32.dp)
+        Spacer(modifier = Modifier.width(16.dp))
+        Column {
+            Text(text = account.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(text = account.email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+fun AccountActionItem(icon: ImageVector, title: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(text = title, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -305,21 +384,15 @@ fun AccountDialogItem(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun AccountDialogContentPreview() {
-    SonarkTheme {
-        Surface {
-            AccountDialogContent(
-                googleAccountName = "airi@example.com",
-                downloadQueueSize = 5,
-                sortOrder = SortOrder.TITLE,
-                onSortOrderChange = {},
-                onRefresh = {},
-                onQueueClick = {},
-                onSettingsClick = {},
-                onCloseClick = {}
-            )
-        }
+private fun formatSize(bytes: Long): String {
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    val tb = gb / 1024.0
+    return when {
+        tb >= 1.0 -> "%.2f TB".format(tb)
+        gb >= 1.0 -> "%.2f GB".format(gb)
+        mb >= 1.0 -> "%.2f MB".format(mb)
+        else -> "%.2f KB".format(kb)
     }
 }

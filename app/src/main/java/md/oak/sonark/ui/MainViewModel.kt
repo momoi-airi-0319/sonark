@@ -8,6 +8,7 @@ import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.data.model.DownloadStatus
 import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.data.repository.AccountRepository
 import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.ui.model.AlbumDownloadItem
 
@@ -20,11 +21,16 @@ enum class UIState {
 }
 
 class MainViewModel(
-    private val repository: MusicRepository
+    private val repository: MusicRepository,
+    private val accountRepository: AccountRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UIState.LOADING)
     val uiState: StateFlow<UIState> = _uiState.asStateFlow()
+
+    val accounts = accountRepository.accounts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val storageQuota = accountRepository.storageQuota.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val isGuestMode = repository.isGuestMode().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
@@ -55,7 +61,7 @@ class MainViewModel(
                 val uniqueFiles = albumSyncSongs.groupBy { it.data }.values.map { it.first() }
                 val totalProgress = if (uniqueFiles.isNotEmpty()) {
                     val completedSum = uniqueFiles.sumOf { 
-                        if (it.downloadStatus == DownloadStatus.COMPLETED) 100 else it.downloadProgress 
+                        if (it.downloadStatus == DownloadStatus.COMPLETED) 100 else it.downloadProgress
                     }
                     completedSum.toFloat() / (uniqueFiles.size * 100f)
                 } else 0f
@@ -113,6 +119,9 @@ class MainViewModel(
             if (albums.value.isEmpty()) {
                 _uiState.value = UIState.LOADING
             }
+            // Refresh account info first and independently
+            refreshAccountInfo()
+            
             try {
                 repository.syncAll()
                 _uiState.value = UIState.SUCCESS
@@ -120,6 +129,25 @@ class MainViewModel(
                 if (albums.value.isEmpty()) {
                     _uiState.value = UIState.ERROR
                 }
+            }
+        }
+    }
+
+    fun refreshAccountInfo() {
+        viewModelScope.launch {
+            val provider = repository.getProvider("google_drive") as? md.oak.sonark.data.provider.DriveMusicProvider
+            provider?.let {
+                val driveService = try {
+                    val cred = it.credential
+                    if (cred != null) {
+                        com.google.api.services.drive.Drive.Builder(
+                            com.google.api.client.http.javanet.NetHttpTransport(),
+                            com.google.api.client.json.gson.GsonFactory.getDefaultInstance(),
+                            cred
+                        ).setApplicationName("Sonark").build()
+                    } else null
+                } catch (_: Exception) { null }
+                accountRepository.refreshQuota(driveService)
             }
         }
     }

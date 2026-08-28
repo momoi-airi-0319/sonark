@@ -13,6 +13,9 @@ data class AlbumKey(val albumTitle: String) : NavKey
 data object PlayerKey : NavKey
 
 @Serializable
+data class ArtistKey(val artistName: String) : NavKey
+
+@Serializable
 data object SearchKey : NavKey
 
 @Serializable

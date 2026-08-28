@@ -10,30 +10,21 @@ import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import md.oak.sonark.ui.SettingsViewModel
 import androidx.compose.ui.tooling.preview.Preview
 import md.oak.sonark.ui.theme.SonarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    viewModel: SettingsViewModel,
-    onConnectClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val googleAccountName by viewModel.googleAccountName.collectAsStateWithLifecycle()
-
     SettingsContent(
-        googleAccountName = googleAccountName,
-        onConnectClick = onConnectClick,
         onBackClick = onBackClick,
         modifier = modifier
     )
@@ -42,8 +33,6 @@ fun SettingsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsContent(
-    googleAccountName: String?,
-    onConnectClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -69,17 +58,6 @@ fun SettingsContent(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            SettingsSection(title = "Music Sources") {
-                SettingsClickItem(
-                    title = if (googleAccountName != null) "Sign out of Google Drive" else "Connect to Google Drive",
-                    subtitle = googleAccountName ?: "Access your music in the cloud",
-                    icon = Icons.Rounded.CloudQueue,
-                    onClick = onConnectClick
-                )
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
             SettingsSection(title = "About") {
                 SettingsInfoItem(
                     title = "App Version",
@@ -118,43 +96,6 @@ fun SettingsSection(
 }
 
 @Composable
-fun SettingsClickItem(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Icon(
-            imageVector = Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
 fun SettingsInfoItem(
     title: String,
     subtitle: String,
@@ -189,8 +130,6 @@ fun SettingsInfoItem(
 fun SettingsScreenPreview() {
     SonarkTheme {
         SettingsContent(
-            googleAccountName = "airi@example.com",
-            onConnectClick = {},
             onBackClick = {}
         )
     }

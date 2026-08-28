@@ -1,6 +1,5 @@
 package md.oak.sonark
 
-import android.app.Activity
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -9,26 +8,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -37,18 +25,17 @@ import androidx.navigation3.ui.NavDisplay
 import coil.Coil
 import coil.ImageLoader
 import coil.intercept.Interceptor
-import coil.request.ImageResult
 import com.google.android.gms.auth.api.signin.GoogleSignIn
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.services.drive.DriveScopes
+import kotlinx.coroutines.launch
 import md.oak.sonark.data.Dependencies
 import md.oak.sonark.navigation.AlbumKey
+import md.oak.sonark.navigation.ArtistKey
 import md.oak.sonark.navigation.LibraryKey
 import md.oak.sonark.navigation.Navigator
 import md.oak.sonark.navigation.PlayerKey
@@ -56,6 +43,7 @@ import md.oak.sonark.navigation.SearchKey
 import md.oak.sonark.navigation.SettingsKey
 import md.oak.sonark.navigation.rememberNavigationState
 import md.oak.sonark.navigation.toEntries
+import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SearchViewModel
@@ -122,10 +110,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SonarkTheme {
-                val viewModel: MainViewModel = viewModel { MainViewModel(repository) }
+                val viewModel: MainViewModel = viewModel { 
+                    MainViewModel(repository, Dependencies.accountRepository) 
+                }
                 val searchViewModel: SearchViewModel = viewModel { SearchViewModel(repository) }
                 val playbackViewModel: PlaybackViewModel = viewModel { PlaybackViewModel(application) }
                 val settingsViewModel: SettingsViewModel = viewModel { SettingsViewModel(settingsRepository) }
+                
+                val scope = rememberCoroutineScope()
                 
                 val gso = remember {
                     @Suppress("DEPRECATION")
@@ -157,10 +149,6 @@ class MainActivity : ComponentActivity() {
                             updateDriveService(null)
                             viewModel.setUnauthenticated()
                         }
-                    } else {
-                        settingsViewModel.setGoogleAccount(null)
-                        updateDriveService(null)
-                        viewModel.setUnauthenticated()
                     }
                 }
 
@@ -168,6 +156,23 @@ class MainActivity : ComponentActivity() {
                 val albums by viewModel.albums.collectAsStateWithLifecycle()
                 val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
                 val downloadQueue by viewModel.downloadQueue.collectAsStateWithLifecycle()
+                
+                val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+                val storageQuota by viewModel.storageQuota.collectAsStateWithLifecycle()
+                val isGuestMode by viewModel.isGuestMode.collectAsStateWithLifecycle()
+                val googleAccountName by settingsViewModel.googleAccountName.collectAsStateWithLifecycle()
+
+                val activeAccount = remember(accounts, googleAccountName) {
+                    if (googleAccountName == null) null
+                    else accounts.find { it.email.equals(googleAccountName, ignoreCase = true) } 
+                        ?: UserAccount(
+                            name = googleAccountName?.split("@")?.firstOrNull() ?: "User",
+                            email = googleAccountName!!
+                        )
+                }
+                val otherAccounts = remember(accounts, activeAccount) {
+                    accounts.filter { it.email != activeAccount?.email }
+                }
                 
                 val queueSize = remember(downloadQueue) {
                     downloadQueue.sumOf { it.totalSongs }
@@ -197,6 +202,150 @@ class MainActivity : ComponentActivity() {
                         viewModel.loadSongs()
                     } else {
                         viewModel.setUnauthenticated()
+                    }
+                }
+
+                LaunchedEffect(googleAccountName) {
+                    if (googleAccountName != null) {
+                        viewModel.refreshAccountInfo()
+                    }
+                }
+
+                val myEntryProvider = entryProvider {
+                    entry<LibraryKey> {
+                        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                        LibraryScreen(
+                            uiState = uiState,
+                            albums = albums,
+                            activeAccount = activeAccount,
+                            otherAccounts = otherAccounts,
+                            storageQuota = storageQuota,
+                            isGuestMode = isGuestMode,
+                            downloadQueueSize = queueSize,
+                            currentSong = currentSong,
+                            isPlaying = isPlaying,
+                            progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
+                            sortOrder = sortOrder,
+                            onSortOrderChange = { viewModel.setSortOrder(it) },
+                            onAlbumClick = { album ->
+                                navigator.navigate(AlbumKey(album.title))
+                            },
+                            onPlayerClick = { navigator.navigate(PlayerKey) },
+                            onRefresh = { viewModel.loadSongs() },
+                            onQueueClick = { showQueue = true },
+                            onSettingsClick = { navigator.navigate(SettingsKey) },
+                            onAddAccountClick = {
+                                googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                            },
+                            onManageAccountsClick = {
+                                Toast.makeText(this@MainActivity, "Manage Accounts not implemented", Toast.LENGTH_SHORT).show()
+                            },
+                            onGuestModeClick = {
+                                scope.launch {
+                                    repository.setGuestMode(true)
+                                    viewModel.loadSongs()
+                                }
+                            },
+                            onSignOutClick = {
+                                googleSignInClient.signOut().addOnCompleteListener {
+                                    settingsViewModel.setGoogleAccount(null)
+                                    updateDriveService(null)
+                                    viewModel.loadSongs()
+                                }
+                            },
+                            onAccountClick = { account ->
+                                settingsViewModel.setGoogleAccount(account.email)
+                                viewModel.loadSongs()
+                            },
+                            onUrlClick = { url ->
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                startActivity(intent)
+                            }
+                        )
+                    }
+                    entry<SearchKey> {
+                        SearchScreen(
+                            viewModel = searchViewModel,
+                            currentSong = currentSong,
+                            isPlaying = isPlaying,
+                            progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
+                            onBackClick = { navigator.goBack() },
+                            onSongClick = { song ->
+                                playbackViewModel.playQueue(listOf(song), 0)
+                            },
+                            onAlbumClick = { album ->
+                                navigator.navigate(AlbumKey(album.title))
+                            },
+                            onArtistClick = { artistName ->
+                                navigator.navigate(ArtistKey(artistName))
+                            }
+                        )
+                    }
+                    entry<ArtistKey> { key ->
+                        val artistAlbums = remember(key, albums) {
+                            albums.filter { it.artist == key.artistName }
+                        }
+                        md.oak.sonark.ui.screens.ArtistScreen(
+                            artistName = key.artistName,
+                            albums = artistAlbums,
+                            onAlbumClick = { album ->
+                                navigator.navigate(AlbumKey(album.title))
+                            },
+                            onBackClick = { navigator.goBack() }
+                        )
+                    }
+                    entry<AlbumKey> { key ->
+                        val currentSongs = songs
+                        val album = remember(key, albums) {
+                            albums.find { it.title == key.albumTitle }
+                        }
+                        val albumSongs = remember(key, currentSongs) { 
+                            viewModel.getSongsForAlbum(key.albumTitle) 
+                        }
+                        if (album != null) {
+                            AlbumScreen(
+                                album = album,
+                                songs = albumSongs,
+                                currentSong = currentSong,
+                                isPlaying = isPlaying,
+                                progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
+                                onSongClick = { song ->
+                                    if (song.song.id == currentSong?.song?.id) {
+                                        navigator.navigate(PlayerKey)
+                                    } else {
+                                        playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
+                                    }
+                                },
+                                onBackClick = { navigator.navigate(LibraryKey) },
+                                onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
+                                onDownloadSongs = { viewModel.downloadSongs(it) }
+                            )
+                        }
+                    }
+                    entry<PlayerKey> {
+                        PlayerScreen(
+                            song = currentSong,
+                            isPlaying = isPlaying,
+                            progress = playbackProgress,
+                            duration = duration,
+                            shuffleEnabled = shuffleEnabled,
+                            repeatMode = repeatMode,
+                            onTogglePlayback = { playbackViewModel.togglePlayback() },
+                            onSeekTo = { playbackViewModel.seekTo(it) },
+                            onSkipNext = { playbackViewModel.skipNext() },
+                            onSkipPrevious = { playbackViewModel.skipPrevious() },
+                            onToggleShuffle = { playbackViewModel.toggleShuffle() },
+                            onToggleRepeatMode = { playbackViewModel.toggleRepeatMode() },
+                            onBackClick = { navigator.navigate(LibraryKey) },
+                            onAlbumClick = { albumTitle ->
+                                navigator.navigate(AlbumKey(albumTitle))
+                            }
+                        )
+                    }
+                    entry<SettingsKey> {
+                        SettingsScreen(
+                            onBackClick = { navigator.goBack() }
+                        )
                     }
                 }
 
@@ -259,126 +408,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) { innerPadding ->
-                    val entryProvider = remember {
-                        entryProvider {
-                            entry<LibraryKey> {
-                                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-                                val googleAccountName by settingsViewModel.googleAccountName.collectAsStateWithLifecycle()
-                                LibraryScreen(
-                                    uiState = uiState,
-                                    albums = albums,
-                                    googleAccountName = googleAccountName,
-                                    downloadQueueSize = queueSize,
-                                    currentSong = currentSong,
-                                    isPlaying = isPlaying,
-                                    progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
-                                    sortOrder = sortOrder,
-                                    onSortOrderChange = { viewModel.setSortOrder(it) },
-                                    onAlbumClick = { album ->
-                                        navigator.navigate(AlbumKey(album.title))
-                                    },
-                                    onPlayerClick = { navigator.navigate(PlayerKey) },
-                                    onRefresh = { viewModel.loadSongs() },
-                                    onQueueClick = { showQueue = true },
-                                    onSettingsClick = { navigator.navigate(SettingsKey) }
-                                )
-                            }
-                            entry<SearchKey> {
-                                    SearchScreen(
-                                        viewModel = searchViewModel,
-                                        currentSong = currentSong,
-                                        isPlaying = isPlaying,
-                                        progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
-                                        onBackClick = { navigator.goBack() },
-                                    onSongClick = { song ->
-                                        playbackViewModel.playQueue(listOf(song), 0)
-                                    },
-                                    onAlbumClick = { album ->
-                                        navigator.navigate(AlbumKey(album.title))
-                                    },
-                                    onArtistClick = { artistName ->
-                                        // TODO: Implement Artist Screen or filter Library by artist
-                                        navigator.navigate(LibraryKey)
-                                        // For now just go to library, maybe in future we can set a filter
-                                    }
-                                )
-                            }
-                            entry<AlbumKey> { key ->
-                                val currentSongs = songs
-                                val album = remember(key, albums) {
-                                    albums.find { it.title == key.albumTitle }
-                                }
-                                val albumSongs = remember(key, currentSongs) { 
-                                    viewModel.getSongsForAlbum(key.albumTitle) 
-                                }
-                                if (album != null) {
-                                    AlbumScreen(
-                                        album = album,
-                                        songs = albumSongs,
-                                        currentSong = currentSong,
-                                        isPlaying = isPlaying,
-                                        progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
-                                        onSongClick = { song ->
-                                            if (song.song.id == currentSong?.song?.id) {
-                                                navigator.navigate(PlayerKey)
-                                            } else {
-                                                playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
-                                            }
-                                        },
-                                        onBackClick = { navigator.navigate(LibraryKey) },
-                                        onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
-                                        onDownloadSongs = { viewModel.downloadSongs(it) }
-                                    )
-                                }
-                            }
-                            entry<PlayerKey> {
-                                PlayerScreen(
-                                    song = currentSong,
-                                    isPlaying = isPlaying,
-                                    progress = playbackProgress,
-                                    duration = duration,
-                                    shuffleEnabled = shuffleEnabled,
-                                    repeatMode = repeatMode,
-                                    onTogglePlayback = { playbackViewModel.togglePlayback() },
-                                    onSeekTo = { playbackViewModel.seekTo(it) },
-                                    onSkipNext = { playbackViewModel.skipNext() },
-                                    onSkipPrevious = { playbackViewModel.skipPrevious() },
-                                    onToggleShuffle = { playbackViewModel.toggleShuffle() },
-                                    onToggleRepeatMode = { playbackViewModel.toggleRepeatMode() },
-                                    onBackClick = { navigator.navigate(LibraryKey) },
-                                    onAlbumClick = { albumTitle ->
-                                        navigator.navigate(AlbumKey(albumTitle))
-                                    }
-                                )
-                            }
-                            entry<SettingsKey> {
-                                SettingsScreen(
-                                    viewModel = settingsViewModel,
-                                    onConnectClick = {
-                                        if (settingsViewModel.googleAccountName.value == null) {
-                                            googleSignInLauncher.launch(googleSignInClient.signInIntent)
-                                        } else {
-                                            googleSignInClient.signOut().addOnCompleteListener {
-                                                settingsViewModel.setGoogleAccount(null)
-                                                updateDriveService(null)
-                                                viewModel.loadSongs()
-                                            }
-                                        }
-                                    },
-                                    onBackClick = { navigator.goBack() }
-                                )
-                            }
-                        }
-                    }
-
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                         NavDisplay(
-                            entries = navigationState.toEntries(entryProvider),
+                            entries = navigationState.toEntries(myEntryProvider),
                             onBack = { navigator.goBack() }
                         )
                     }
-                    // Satisfy innerPadding consumption
-                    Spacer(modifier = Modifier.padding(innerPadding))
 
                     if (showQueue) {
                         DownloadQueueBottomSheet(
@@ -391,4 +426,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-

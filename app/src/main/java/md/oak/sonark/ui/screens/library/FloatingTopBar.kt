@@ -13,7 +13,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.components.CircularWavyProgressIndicator
+import md.oak.sonark.ui.components.UserAvatar
 
 import androidx.compose.ui.tooling.preview.Preview
 import md.oak.sonark.ui.theme.SonarkTheme
@@ -23,7 +25,8 @@ fun FloatingTopBar(
     currentSong: SyncSong?,
     isPlaying: Boolean,
     progress: Float,
-    googleAccountName: String?,
+    activeAccount: UserAccount?,
+    isGuestMode: Boolean,
     onPlayerClick: () -> Unit,
     onAccountClick: () -> Unit
 ) {
@@ -44,27 +47,11 @@ fun FloatingTopBar(
             modifier = Modifier.size(56.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Surface(
-                    modifier = Modifier.size(44.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (googleAccountName != null) {
-                            Text(
-                                text = googleAccountName.take(1).uppercase(),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.AccountCircle,
-                                contentDescription = "Profile",
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-                }
+                UserAvatar(
+                    user = activeAccount,
+                    isGuest = isGuestMode,
+                    size = 44.dp
+                )
             }
         }
 
@@ -123,7 +110,8 @@ fun FloatingTopBarEmptyPreview() {
                 currentSong = null,
                 isPlaying = false,
                 progress = 0f,
-                googleAccountName = null,
+                activeAccount = null,
+                isGuestMode = false,
                 onPlayerClick = {},
                 onAccountClick = {}
             )
@@ -140,7 +128,8 @@ fun FloatingTopBarWithAccountPreview() {
                 currentSong = null,
                 isPlaying = false,
                 progress = 0f,
-                googleAccountName = "Airi",
+                activeAccount = UserAccount("Airi", "airi@example.com"),
+                isGuestMode = false,
                 onPlayerClick = {},
                 onAccountClick = {}
             )

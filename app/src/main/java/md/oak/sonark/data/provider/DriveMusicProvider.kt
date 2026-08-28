@@ -11,8 +11,10 @@ import kotlinx.coroutines.withContext
 import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.data.model.Song
 import md.oak.sonark.data.model.SyncSong
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import java.io.FileOutputStream
 import java.io.File as JavaFile
 import androidx.core.net.toUri
@@ -21,7 +23,14 @@ class DriveMusicProvider : MusicProvider {
     override val id: String = "google_drive"
     override val name: String = "Google Drive"
 
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .dispatcher(Dispatcher().apply {
+            maxRequestsPerHost = 10
+        })
+        .build()
     private var driveService: Drive? = null
     var credential: GoogleAccountCredential? = null
         set(value) {
@@ -45,35 +54,32 @@ class DriveMusicProvider : MusicProvider {
     override suspend fun syncLibrary(): List<SyncSong> = withContext(Dispatchers.IO) {
         val service = driveService ?: return@withContext emptyList()
         val songs = mutableListOf<SyncSong>()
-        try {
-            val vaultFolder = findFolder(service, "Vault", "root") ?: return@withContext emptyList()
-            val albumFolders = listFolders(service, vaultFolder.id)
+        
+        val vaultFolder = findFolder(service, "Vault", "root") ?: return@withContext emptyList()
+        val albumFolders = listFolders(service, vaultFolder.id)
 
-            for (albumFolder in albumFolders) {
-                val files = listFiles(service, albumFolder.id)
-                val coverFile = files.find { file ->
-                    val name = file.name.lowercase()
-                    name.startsWith("cover.") || name.startsWith("folder.")
+        for (albumFolder in albumFolders) {
+            val files = listFiles(service, albumFolder.id)
+            val coverFile = files.find { file ->
+                val name = file.name.lowercase()
+                name.startsWith("cover.") || name.startsWith("folder.")
+            }
+            val imageUrl = coverFile?.let { "https://www.googleapis.com/drive/v3/files/${it.id}?alt=media" }
+            val coverSize = coverFile?.size?.toLong() ?: 0L
+            val coverMd5 = coverFile?.md5Checksum
+
+            val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
+            if (cueFiles.isNotEmpty()) {
+                cueFiles.forEachIndexed { index, cueFile ->
+                    songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl, coverSize, coverMd5, discNumber = index + 1))
                 }
-                val imageUrl = coverFile?.let { "https://www.googleapis.com/drive/v3/files/${it.id}?alt=media" }
-                val coverSize = coverFile?.size?.toLong() ?: 0L
-                val coverMd5 = coverFile?.md5Checksum
-
-                val cueFiles = files.filter { it.name.endsWith(".cue", ignoreCase = true) }.sortedBy { it.name }
-                if (cueFiles.isNotEmpty()) {
-                    cueFiles.forEachIndexed { index, cueFile ->
-                        songs.addAll(parseCueAlbum(service, cueFile, files, albumFolder.name, imageUrl, coverSize, coverMd5, discNumber = index + 1))
-                    }
-                } else {
-                    for (file in files) {
-                        if (isAudioFile(file)) {
-                            songs.add(parseSong(file, albumFolder.id, albumFolder.name, imageUrl, coverSize, coverMd5))
-                        }
+            } else {
+                for (file in files) {
+                    if (isAudioFile(file)) {
+                        songs.add(parseSong(file, albumFolder.id, albumFolder.name, imageUrl, coverSize, coverMd5))
                     }
                 }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
         songs
     }
@@ -104,13 +110,25 @@ class DriveMusicProvider : MusicProvider {
 
         try {
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful && response.code != 416) return@withContext false
+                if (!response.isSuccessful && response.code != 416) {
+                    android.util.Log.e("Sonark", "Download failed for ${song.song.title}: HTTP ${response.code}")
+                    return@withContext false
+                }
                 
                 if (response.code == 416) return@withContext true 
 
                 val body = response.body ?: return@withContext false
                 val append = response.code == 206
                 
+                // Get accurate total size from Content-Length or Content-Range if possible
+                val contentLength = body.contentLength()
+                val totalSize = if (append) {
+                    val contentRange = response.header("Content-Range")
+                    contentRange?.substringAfterLast("/")?.toLongOrNull() ?: song.size
+                } else {
+                    if (contentLength > 0) contentLength else song.size
+                }
+
                 FileOutputStream(targetFile, append).use { fos ->
                     val inputStream = body.byteStream()
                     val buffer = ByteArray(8192)
@@ -120,7 +138,7 @@ class DriveMusicProvider : MusicProvider {
                     while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                         fos.write(buffer, 0, bytesRead)
                         totalDownloaded += bytesRead
-                        onProgress(totalDownloaded, song.size)
+                        onProgress(totalDownloaded, totalSize)
                     }
                 }
                 true

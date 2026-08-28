@@ -29,7 +29,8 @@ fun LibraryGrid(
     uiState: UIState,
     albums: List<Album>,
     onAlbumClick: (Album) -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(start = 16.dp, top = 160.dp, end = 16.dp, bottom = 160.dp)
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (uiState) {
@@ -73,7 +74,7 @@ fun LibraryGrid(
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 160.dp),
-                        contentPadding = PaddingValues(start = 16.dp, top = 160.dp, end = 16.dp, bottom = 160.dp),
+                        contentPadding = contentPadding,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxSize()
