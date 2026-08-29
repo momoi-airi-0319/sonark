@@ -24,9 +24,6 @@ class MusicRepository(
     private val metadataManager: MetadataManager = MetadataManager(context, songDao, albumDao)
 ) {
 
-    fun isGuestMode(): Flow<Boolean> = settingsRepository.isGuestMode
-    suspend fun setGuestMode(enabled: Boolean) = settingsRepository.setGuestMode(enabled)
-
     private val providers = mutableMapOf<String, MusicProvider>()
 
     fun registerProvider(provider: MusicProvider) {

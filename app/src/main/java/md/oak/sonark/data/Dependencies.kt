@@ -42,7 +42,7 @@ object Dependencies {
             ).apply { start() }
         }
         if (!::accountRepository.isInitialized) {
-            accountRepository = AccountRepository()
+            accountRepository = AccountRepository(settingsRepository)
         }
     }
 }

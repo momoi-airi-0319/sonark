@@ -7,32 +7,33 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class UserAccount(
     val name: String,
     val email: String,
     val profileImageUrl: String? = null,
-    val isPro: Boolean = false
+    val isPro: Boolean = false,
+    val isLoggedIn: Boolean = true,
 )
 
 data class StorageQuota(
     val usedBytes: Long,
     val totalBytes: Long,
-    val usedPercentage: Float
+    val usedPercentage: Float,
 )
 
-class AccountRepository() {
+class AccountRepository(private val settingsRepository: SettingsRepository) {
 
     private val _storageQuota = MutableStateFlow<StorageQuota?>(null)
     val storageQuota: Flow<StorageQuota?> = _storageQuota.asStateFlow()
 
-    private val _accounts = MutableStateFlow<List<UserAccount>>(emptyList())
-    val accounts: Flow<List<UserAccount>> = _accounts.asStateFlow()
+    val accounts: Flow<List<UserAccount>> = settingsRepository.storedAccounts
 
     suspend fun refreshQuota(driveService: Drive?) = withContext(Dispatchers.IO) {
         if (driveService == null) {
             _storageQuota.value = null
-            _accounts.value = emptyList()
             return@withContext
         }
         try {
@@ -50,23 +51,18 @@ class AccountRepository() {
             
             val user = about.user
             if (user != null) {
-                // In a real app, you'd manage multiple accounts here.
-                // For now, we'll just update the current one's info.
-                _accounts.value = listOf(
-                    UserAccount(
-                        name = user.displayName ?: "User",
-                        email = user.emailAddress ?: "",
-                        profileImageUrl = user.photoLink,
-                        isPro = true // Hardcoded for demo/UI matching
-                    )
+                val email = user.emailAddress ?: ""
+                val account = UserAccount(
+                    name = user.displayName ?: "User",
+                    email = email,
+                    profileImageUrl = user.photoLink,
+                    isPro = true,
+                    isLoggedIn = true,
                 )
+                settingsRepository.addOrUpdateAccount(account)
             }
         } catch (e: Exception) {
             Log.e("AccountRepository", "Error refreshing quota", e)
         }
-    }
-    
-    fun setAccounts(accounts: List<UserAccount>) {
-        _accounts.value = accounts
     }
 }

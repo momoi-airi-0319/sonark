@@ -1,29 +1,48 @@
-# 播放器跳转优化计划
+# Implementation Plan - Migrate to Credential Manager and AuthorizationClient
 
-实现点击系统通知栏播放卡片后直接跳转到播放器界面。
+Migrate the authentication and authorization flow from the deprecated `GoogleSignIn` API to the modern `Credential Manager` and `AuthorizationClient` APIs. This will provide a more seamless, bottom-sheet-based login experience and future-proof the app's identity logic.
 
-## 用户审核要求
-> [!IMPORTANT]
-> 需要修改 `PlaybackService` 以发送特定 Action 的 Intent，并在 `MainActivity` 中捕获并处理该 Intent。
+## Proposed Changes
 
-## 提出的修改
+### Build Configuration
 
-### Playback 模块
+#### [MODIFY] [libs.versions.toml](file:///C:/Users/airi/wksp/Sonark/gradle/libs.versions.toml)
+- Add versions and library definitions for `androidx.credentials` and `googleid`.
 
-#### [MODIFY] [PlaybackService.kt](file:///C:/Users/airi/wksp/Sonark/app/src/main/java/md/oak/sonark/playback/PlaybackService.kt)
-- 添加 `ACTION_SHOW_PLAYER` 常量。
-- 修改 `createMediaSession` 以在 `PendingIntent` 中使用该 Action。
+#### [MODIFY] [build.gradle.kts](file:///C:/Users/airi/wksp/Sonark/app/build.gradle.kts)
+- Add the new dependencies to the app module.
 
-### UI 模块
+---
+
+### Authentication & Authorization Layer
+
+#### [MODIFY] [AuthManager.kt](file:///C:/Users/airi/wksp/Sonark/app/src/main/java/md/oak/sonark/auth/AuthManager.kt)
+- Replace `GoogleSignInClient` with `CredentialManager`.
+- Implement `signIn` using `GetCredentialRequest` and `GetGoogleIdTokenOption`.
+- Implement `authorizeDrive` using `Identity.getAuthorizationClient`.
+- Update `signOut` to use `credentialManager.clearCredentialState()`.
+- Update `updateDriveService` to handle the new authorization result.
+
+---
+
+### UI Layer
 
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/airi/wksp/Sonark/app/src/main/java/md/oak/sonark/MainActivity.kt)
-- 添加处理 Intent 的逻辑。
-- 在 Compose 中监听 Intent 触发，并使用 `Navigator` 跳转到 `PlayerKey`。
+- Update the sign-in launcher to handle the new `Credential Manager` flow.
+- Coordinate authentication (who the user is) and authorization (Drive access).
+- Update the `LoginScreen` and `AccountPopDialog` interactions to use the new `AuthManager` methods.
 
-## 验证计划
+## Verification Plan
 
-### 手动验证
-- 启动应用并播放一首歌。
-- 退出应用回到主屏幕（保持后台播放）。
-- 点击通知栏中的播放卡片。
-- 验证应用是否重新打开并直接跳转到播放器界面（PlayerScreen）。
+### Automated Tests
+- Build the project to ensure no compilation errors.
+- (Optional) Run existing UI tests if available.
+
+### Manual Verification
+1. Launch the app.
+2. Verify the `LoginScreen` appears.
+3. Click "Sign in with Google" and verify the Credential Manager bottom sheet appears.
+4. Select an account and verify the app requests Drive authorization.
+5. Confirm that the library still syncs correctly after signing in.
+6. Test "Add another account" and verify it works with the new flow.
+7. Test "Sign out" and verify the credentials are cleared.

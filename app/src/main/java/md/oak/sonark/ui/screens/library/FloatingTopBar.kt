@@ -36,7 +36,6 @@ fun FloatingTopBar(
     isPlaying: Boolean,
     progress: Float,
     activeAccount: UserAccount?,
-    isGuestMode: Boolean,
     onPlayerClick: () -> Unit,
     onAccountClick: () -> Unit
 ) {
@@ -59,7 +58,6 @@ fun FloatingTopBar(
             Box(contentAlignment = Alignment.Center) {
                 UserAvatar(
                     user = activeAccount,
-                    isGuest = isGuestMode,
                     size = 44.dp
                 )
             }
@@ -121,7 +119,6 @@ fun FloatingTopBarEmptyPreview() {
                 isPlaying = false,
                 progress = 0f,
                 activeAccount = null,
-                isGuestMode = false,
                 onPlayerClick = {},
                 onAccountClick = {}
             )
@@ -139,7 +136,6 @@ fun FloatingTopBarWithAccountPreview() {
                 isPlaying = false,
                 progress = 0f,
                 activeAccount = UserAccount("Airi", "airi@example.com"),
-                isGuestMode = false,
                 onPlayerClick = {},
                 onAccountClick = {}
             )

@@ -32,11 +32,6 @@ class MainViewModel(
 
     val accounts = accountRepository.accounts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val storageQuota = accountRepository.storageQuota.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val isGuestMode = repository.isGuestMode().stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5000),
-        initialValue = false,
-    )
 
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
@@ -192,13 +187,6 @@ class MainViewModel(
 
     fun setUnauthenticated() {
         _uiState.value = UIState.UNAUTHENTICATED
-    }
-
-    fun setGuestMode(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.setGuestMode(enabled)
-            loadSongs()
-        }
     }
 
     fun setSortOrder(order: SortOrder) {

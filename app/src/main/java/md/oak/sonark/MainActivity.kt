@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,9 @@ import androidx.navigation3.ui.NavDisplay
 import coil.Coil
 import coil.ImageLoader
 import coil.intercept.Interceptor
+import com.google.android.gms.common.api.ApiException
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
 import md.oak.sonark.auth.AuthManager
 import md.oak.sonark.data.Dependencies
 import md.oak.sonark.navigation.*
@@ -40,6 +44,38 @@ import md.oak.sonark.ui.components.FloatingNavItem
 import md.oak.sonark.ui.screens.library.AccountPopDialog
 import md.oak.sonark.ui.screens.library.FloatingTopBar
 import md.oak.sonark.ui.theme.SonarkTheme
+
+@Composable
+fun LoginScreen(onSignInClick: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.LibraryMusic,
+                contentDescription = "Sonark Logo",
+                modifier = Modifier.size(120.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Text(
+                text = "Sonark",
+                style = MaterialTheme.typography.headlineLarge
+            )
+            Spacer(modifier = Modifier.height(48.dp))
+            Button(
+                onClick = onSignInClick,
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text("Sign in with Google")
+            }
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -66,30 +102,11 @@ class MainActivity : ComponentActivity() {
                 val playbackViewModel: PlaybackViewModel = viewModel { PlaybackViewModel(application) }
                 val settingsViewModel: SettingsViewModel = viewModel { SettingsViewModel(Dependencies.settingsRepository) }
                 
-                val googleSignInLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.StartActivityForResult(),
-                ) { result ->
-                    if (result.resultCode == RESULT_OK) {
-                        authManager.handleSignInResult(
-                            data = result.data,
-                            onSuccess = { account ->
-                                settingsViewModel.setGoogleAccount(account.email)
-                                viewModel.loadSongs()
-                            },
-                        ) { e ->
-                            Log.e("Sonark", "Sign-in failed with status code: ${e.statusCode}")
-                            Toast.makeText(this@MainActivity, "Sign-in failed: ${e.message}", Toast.LENGTH_LONG).show()
-                            settingsViewModel.setGoogleAccount(null)
-                            viewModel.setUnauthenticated()
-                        }
-                    }
-                }
-
+                val coroutineScope = rememberCoroutineScope()
                 val downloadQueueState by viewModel.downloadQueue.collectAsStateWithLifecycle()
                 val googleAccountName by settingsViewModel.googleAccountName.collectAsStateWithLifecycle()
                 val accounts by viewModel.accounts.collectAsStateWithLifecycle()
                 val storageQuota by viewModel.storageQuota.collectAsStateWithLifecycle()
-                val isGuestMode by viewModel.isGuestMode.collectAsStateWithLifecycle()
                 val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
 
                 val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
@@ -105,6 +122,70 @@ class MainActivity : ComponentActivity() {
                             email = googleAccountName!!,
                         )
                 }
+
+                val authLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartIntentSenderForResult()
+                ) { result ->
+                    try {
+                        val authResult = authManager.getAuthorizationClient()
+                            .getAuthorizationResultFromIntent(result.data)
+                        
+                        settingsViewModel.setGoogleAccount(activeAccount?.email)
+                        authManager.updateDriveService(authResult.accessToken, activeAccount?.email)
+                        viewModel.loadSongs()
+                    } catch (e: ApiException) {
+                        Log.e("Sonark", "Authorization failed", e)
+                        Toast.makeText(this@MainActivity, "Authorization failed", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                val performAuth = { email: String ->
+                    val authRequest = authManager.createAuthorizationRequest()
+                    authManager.getAuthorizationClient().authorize(authRequest)
+                        .addOnSuccessListener { result ->
+                            if (result.hasResolution()) {
+                                val pendingIntent = result.pendingIntent
+                                authLauncher.launch(IntentSenderRequest.Builder(pendingIntent!!.intentSender).build())
+                            } else {
+                                authManager.updateDriveService(result.accessToken, email)
+                                viewModel.loadSongs()
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("Sonark", "Auth request failed", e)
+                        }
+                }
+
+                val handleSignInResult = { credential: GoogleIdTokenCredential ->
+                    val email = credential.id
+                    settingsViewModel.setGoogleAccount(email)
+                    settingsViewModel.addOrUpdateAccount(
+                        md.oak.sonark.data.repository.UserAccount(
+                            name = credential.displayName ?: email.split("@").first(),
+                            email = email,
+                            profileImageUrl = credential.profilePictureUri?.toString(),
+                            isLoggedIn = true
+                        )
+                    )
+                    performAuth(email)
+                }
+
+                val startSignIn = {
+                    coroutineScope.launch {
+                        when (val result = authManager.signIn()) {
+                            is md.oak.sonark.auth.SignInResult.Success -> {
+                                handleSignInResult(result.credential)
+                            }
+                            is md.oak.sonark.auth.SignInResult.Failure -> {
+                                viewModel.setUnauthenticated()
+                                val errorMsg = "Sign-in failed: ${result.type}\n${result.message ?: ""}"
+                                Log.e("Sonark", errorMsg)
+                                Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+
                 val otherAccounts = remember(accounts, activeAccount) {
                     accounts.filter { it.email != activeAccount?.email }
                 }
@@ -131,11 +212,8 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(Unit) {
-                    val lastAccount = authManager.getLastSignedInAccount()
-                    if (lastAccount != null) {
-                        settingsViewModel.setGoogleAccount(lastAccount.email)
-                        authManager.updateDriveService(lastAccount)
-                        viewModel.loadSongs()
+                    if (googleAccountName != null) {
+                        performAuth(googleAccountName!!)
                     } else {
                         viewModel.setUnauthenticated()
                     }
@@ -151,97 +229,104 @@ class MainActivity : ComponentActivity() {
                     viewModel = viewModel,
                     searchViewModel = searchViewModel,
                     playbackViewModel = playbackViewModel,
+                    settingsViewModel = settingsViewModel,
                     navigator = navigator
                 )
 
-                Scaffold(
-                    contentWindowInsets = WindowInsets(0, 0, 0, 0)
-                ) { padding ->
-                    Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-                        NavDisplay(
-                            entries = navigationState.toEntries(myEntryProvider),
-                        ) {
-                            navigator.goBack()
+                if (activeAccount == null) {
+                    LoginScreen(
+                        onSignInClick = {
+                            startSignIn()
                         }
-
-                        val currentBackStack = navigationState.backStacks[navigationState.topLevelRoute]
-                        val isAtTopLevelRoot = (currentBackStack?.size ?: 0) <= 1
-                        val showBars = (isAtTopLevelRoot && (navigationState.topLevelRoute != SettingsKey))
-
-                        if (showBars) {
-                            FloatingTopBar(
-                                currentSong = currentSong,
-                                isPlaying = isPlaying,
-                                progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
-                                activeAccount = activeAccount,
-                                isGuestMode = isGuestMode,
-                                onPlayerClick = { navigator.navigate(PlayerKey) },
-                                onAccountClick = { showAccountDialog = true }
-                            )
-
-                            Box(
-                                modifier = Modifier.align(Alignment.BottomCenter)
+                    )
+                } else {
+                    Scaffold(
+                        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+                    ) { padding ->
+                        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                            NavDisplay(
+                                entries = navigationState.toEntries(myEntryProvider),
                             ) {
-                                SonarkBottomBar(navigationState, navigator)
+                                navigator.goBack()
+                            }
+
+                            val currentBackStack = navigationState.backStacks[navigationState.topLevelRoute]
+                            val isAtTopLevelRoot = (currentBackStack?.size ?: 0) <= 1
+                            val showBars = (isAtTopLevelRoot && (navigationState.topLevelRoute != SettingsKey))
+
+                            if (showBars) {
+                                FloatingTopBar(
+                                    currentSong = currentSong,
+                                    isPlaying = isPlaying,
+                                    progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
+                                    activeAccount = activeAccount,
+                                    onPlayerClick = { navigator.navigate(PlayerKey) },
+                                    onAccountClick = { showAccountDialog = true }
+                                )
+
+                                Box(
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                ) {
+                                    SonarkBottomBar(navigationState, navigator)
+                                }
                             }
                         }
-                    }
 
-                    if (showQueue) {
-                        DownloadQueueBottomSheet(
-                            queue = downloadQueueState,
-                            onDismissRequest = { showQueue = false }
-                        )
-                    }
+                        if (showQueue) {
+                            DownloadQueueBottomSheet(
+                                queue = downloadQueueState,
+                                onDismissRequest = { showQueue = false }
+                            )
+                        }
 
-                    if (showAccountDialog) {
-                        AccountPopDialog(
-                            activeAccount = activeAccount,
-                            otherAccounts = otherAccounts,
-                            storageQuota = storageQuota,
-                            isGuestMode = isGuestMode,
-                            downloadQueueSize = queueSize,
-                            sortOrder = sortOrder,
-                            onSortOrderChange = { viewModel.setSortOrder(it) },
-                            onRefresh = { viewModel.loadSongs() },
-                            onQueueClick = {
-                                showAccountDialog = false
-                                showQueue = true
-                            },
-                            onSettingsClick = {
-                                showAccountDialog = false
-                                navigator.navigate(SettingsKey)
-                            },
-                            onAddAccountClick = {
-                                showAccountDialog = false
-                                googleSignInLauncher.launch(authManager.googleSignInClient.signInIntent)
-                            },
-                            onManageAccountsClick = {
-                                showAccountDialog = false
-                                Toast.makeText(this@MainActivity, "Manage Accounts not implemented", Toast.LENGTH_SHORT).show()
-                            },
-                            onGuestModeClick = {
-                                showAccountDialog = false
-                                viewModel.setGuestMode(enabled = true)
-                            },
-                            onSignOutClick = {
-                                showAccountDialog = false
-                                authManager.signOut {
-                                    settingsViewModel.setGoogleAccount(null)
-                                    viewModel.loadSongs()
-                                }
-                            },
-                            onAccountClick = { account ->
-                                showAccountDialog = false
-                                settingsViewModel.setGoogleAccount(account.email)
-                                viewModel.loadSongs()
-                            },
-                            onUrlClick = { url ->
-                                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                                this@MainActivity.startActivity(intent)
-                            },
-                            onDismissRequest = { showAccountDialog = false }
-                        )
+                        if (showAccountDialog) {
+                            AccountPopDialog(
+                                activeAccount = activeAccount,
+                                otherAccounts = otherAccounts,
+                                storageQuota = storageQuota,
+                                downloadQueueSize = queueSize,
+                                sortOrder = sortOrder,
+                                onSortOrderChange = { viewModel.setSortOrder(it) },
+                                onRefresh = { viewModel.loadSongs() },
+                                onQueueClick = {
+                                    showAccountDialog = false
+                                    showQueue = true
+                                },
+                                onSettingsClick = {
+                                    showAccountDialog = false
+                                    navigator.navigate(SettingsKey)
+                                },
+                                onAddAccountClick = {
+                                    showAccountDialog = false
+                                    startSignIn()
+                                },
+                                onSignOutAllClick = {
+                                    showAccountDialog = false
+                                    coroutineScope.launch {
+                                        authManager.signOut {
+                                            settingsViewModel.signOutAll()
+                                            viewModel.loadSongs()
+                                        }
+                                    }
+                                },
+                                onAccountClick = { account ->
+                                    showAccountDialog = false
+                                    if (account.email != activeAccount.email) {
+                                        if (!account.isLoggedIn) {
+                                            startSignIn()
+                                        } else {
+                                            settingsViewModel.setGoogleAccount(account.email)
+                                            performAuth(account.email)
+                                        }
+                                    }
+                                },
+                                onUrlClick = { url ->
+                                    val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+                                    this@MainActivity.startActivity(intent)
+                                },
+                                onDismissRequest = { showAccountDialog = false }
+                            )
+                        }
                     }
                 }
             }

@@ -8,39 +8,82 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.json.Json
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class SettingsRepository(private val context: Context) {
-    private val GOOGLE_ACCOUNT_NAME = stringPreferencesKey("google_account_name")
-    private val IS_GUEST_MODE = androidx.datastore.preferences.core.booleanPreferencesKey("is_guest_mode")
+    private val googleAccountNameKey = stringPreferencesKey("google_account_name")
+    private val storedAccountsKey = stringPreferencesKey("stored_accounts")
 
     val googleAccountName: Flow<String?> = context.dataStore.data
         .map { preferences ->
-            preferences[GOOGLE_ACCOUNT_NAME]
+            preferences[googleAccountNameKey]
         }
 
-    val isGuestMode: Flow<Boolean> = context.dataStore.data
+    val storedAccounts: Flow<List<UserAccount>> = context.dataStore.data
         .map { preferences ->
-            preferences[IS_GUEST_MODE] ?: false
+            val json = preferences[storedAccountsKey] ?: return@map emptyList()
+            try {
+                Json.decodeFromString<List<UserAccount>>(json)
+            } catch (_: Exception) {
+                emptyList()
+            }
         }
 
     suspend fun setGoogleAccountName(name: String?) {
         context.dataStore.edit { preferences ->
             if (name == null) {
-                preferences.remove(GOOGLE_ACCOUNT_NAME)
+                preferences.remove(googleAccountNameKey)
             } else {
-                preferences[GOOGLE_ACCOUNT_NAME] = name
-                preferences[IS_GUEST_MODE] = false
+                preferences[googleAccountNameKey] = name
             }
         }
     }
 
-    suspend fun setGuestMode(enabled: Boolean) {
+    suspend fun addOrUpdateAccount(account: UserAccount) {
         context.dataStore.edit { preferences ->
-            preferences[IS_GUEST_MODE] = enabled
-            if (enabled) {
-                preferences.remove(GOOGLE_ACCOUNT_NAME)
+            val currentJson = preferences[storedAccountsKey]
+            val currentList = if (currentJson != null) {
+                try {
+                    Json.decodeFromString<List<UserAccount>>(currentJson).toMutableList()
+                } catch (_: Exception) {
+                    mutableListOf()
+                }
+            } else {
+                mutableListOf()
+            }
+
+            val index = currentList.indexOfFirst { it.email == account.email }
+            if (index != -1) {
+                currentList[index] = account
+            } else {
+                currentList.add(account)
+            }
+            preferences[storedAccountsKey] = Json.encodeToString(currentList)
+        }
+    }
+
+    suspend fun setAccounts(accounts: List<UserAccount>) {
+        context.dataStore.edit { preferences ->
+            preferences[storedAccountsKey] = Json.encodeToString(accounts)
+        }
+    }
+
+    suspend fun removeAccount(email: String) {
+        context.dataStore.edit { preferences ->
+            val currentJson = preferences[storedAccountsKey] ?: return@edit
+            val currentList = try {
+                Json.decodeFromString<List<UserAccount>>(currentJson).toMutableList()
+            } catch (_: Exception) {
+                return@edit
+            }
+            
+            currentList.removeAll { it.email == email }
+            preferences[storedAccountsKey] = Json.encodeToString(currentList)
+            
+            if (preferences[googleAccountNameKey] == email) {
+                preferences.remove(googleAccountNameKey)
             }
         }
     }

@@ -10,6 +10,7 @@ import androidx.navigation3.runtime.entryProvider
 import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SearchViewModel
+import md.oak.sonark.ui.SettingsViewModel
 import md.oak.sonark.ui.screens.AlbumScreen
 import md.oak.sonark.ui.screens.ArtistScreen
 import md.oak.sonark.ui.screens.HomeScreen
@@ -25,6 +26,7 @@ fun createNavEntryProvider(
     viewModel: MainViewModel,
     searchViewModel: SearchViewModel,
     playbackViewModel: PlaybackViewModel,
+    settingsViewModel: SettingsViewModel,
     navigator: Navigator,
 ): (NavKey) -> NavEntry<NavKey> {
     val songs by viewModel.songs.collectAsStateWithLifecycle()
@@ -65,7 +67,7 @@ fun createNavEntryProvider(
                         playbackViewModel.playQueue(songs, songs.indexOf(syncSong))
                     }
                 },
-                onRefresh = { viewModel.loadSongs() }
+                onRefresh = { viewModel.loadSongs() },
             )
         }
         entry<SearchKey> {
@@ -83,7 +85,7 @@ fun createNavEntryProvider(
                 },
                 onArtistClick = { artistName ->
                     navigator.navigate(ArtistKey(artistName))
-                }
+                },
             )
         }
         entry<ArtistKey> { key ->
@@ -93,7 +95,7 @@ fun createNavEntryProvider(
                 albums.filter { ArtistUtils.normalize(it.artist) == normalizedTarget }
             }
             
-            val featuredSongs = remember(normalizedTarget, songs) {
+            val featuredSongsList = remember(normalizedTarget, songs) {
                 songs.filter { syncSong ->
                     // Artist is in song's artist list
                     val isParticipant = ArtistUtils.splitArtists(syncSong.song.artist).any { ArtistUtils.normalize(it) == normalizedTarget }
@@ -106,7 +108,7 @@ fun createNavEntryProvider(
             ArtistScreen(
                 artistName = key.artistName,
                 personalAlbums = personalAlbums,
-                featuredSongs = featuredSongs,
+                featuredSongs = featuredSongsList,
                 currentSong = currentSong,
                 isPlaying = isPlaying,
                 progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
@@ -114,11 +116,11 @@ fun createNavEntryProvider(
                     navigator.navigate(AlbumKey(album.title))
                 },
                 onSongClick = { syncSong ->
-                    playbackViewModel.playQueue(featuredSongs, featuredSongs.indexOf(syncSong))
+                    playbackViewModel.playQueue(featuredSongsList, featuredSongsList.indexOf(syncSong))
                 },
                 onBackClick = { navigator.goBack() },
-                onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
-                onDownloadSongs = viewModel::downloadSongs
+                onLoadMetadata = { songsToLoad -> viewModel.fetchMetadataForSongs(songsToLoad) },
+                onDownloadSongs = viewModel::downloadSongs,
             )
         }
         entry<AlbumKey> { key ->
@@ -143,8 +145,8 @@ fun createNavEntryProvider(
                         }
                     },
                     onBackClick = { navigator.navigate(LibraryKey) },
-                    onLoadMetadata = { viewModel.fetchMetadataForSongs(it) },
-                    onDownloadSongs = viewModel::downloadSongs
+                    onLoadMetadata = { songsToLoad -> viewModel.fetchMetadataForSongs(songsToLoad) },
+                    onDownloadSongs = viewModel::downloadSongs,
                 )
             }
         }
@@ -165,12 +167,13 @@ fun createNavEntryProvider(
                 onBackClick = { navigator.navigate(LibraryKey) },
                 onAlbumClick = { albumTitle ->
                     navigator.navigate(AlbumKey(albumTitle))
-                }
+                },
             )
         }
         entry<SettingsKey> {
             SettingsScreen(
-                onBackClick = { navigator.goBack() }
+                viewModel = settingsViewModel,
+                onBackClick = { navigator.goBack() },
             )
         }
     }
