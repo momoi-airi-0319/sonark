@@ -3,7 +3,7 @@ package md.oak.sonark.data.model
 import kotlinx.serialization.Serializable
 
 enum class DownloadStatus {
-    NONE, PENDING, DOWNLOADING, COMPLETED, ERROR
+    NONE, PENDING, DOWNLOADING, PAUSED, COMPLETED, ERROR
 }
 
 /**

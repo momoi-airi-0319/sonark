@@ -29,23 +29,21 @@ fun createNavEntryProvider(
     settingsViewModel: SettingsViewModel,
     navigator: Navigator,
 ): (NavKey) -> NavEntry<NavKey> {
-    val songs by viewModel.songs.collectAsStateWithLifecycle()
-    val albums by viewModel.albums.collectAsStateWithLifecycle()
-    val artists by viewModel.artists.collectAsStateWithLifecycle()
-
-    val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
-    val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
-    val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
-    val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
-    val shuffleEnabled by playbackViewModel.shuffleEnabled.collectAsStateWithLifecycle()
-    val repeatMode by playbackViewModel.repeatMode.collectAsStateWithLifecycle()
-
     return entryProvider {
         entry<HomeKey> {
             HomeScreen()
         }
         entry<LibraryKey> {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val albums by viewModel.albums.collectAsStateWithLifecycle()
+            val artists by viewModel.artists.collectAsStateWithLifecycle()
+            val songs by viewModel.songs.collectAsStateWithLifecycle()
+            
+            val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
+            val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
+            val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
+            val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
+
             LibraryScreen(
                 uiState = uiState,
                 albums = albums,
@@ -71,6 +69,11 @@ fun createNavEntryProvider(
             )
         }
         entry<SearchKey> {
+            val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
+            val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
+            val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
+            val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
+
             SearchScreen(
                 viewModel = searchViewModel,
                 currentSong = currentSong,
@@ -89,6 +92,14 @@ fun createNavEntryProvider(
             )
         }
         entry<ArtistKey> { key ->
+            val albums by viewModel.albums.collectAsStateWithLifecycle()
+            val songs by viewModel.songs.collectAsStateWithLifecycle()
+            
+            val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
+            val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
+            val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
+            val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
+
             val normalizedTarget = remember(key) { ArtistUtils.normalize(key.artistName) }
             
             val personalAlbums = remember(normalizedTarget, albums) {
@@ -124,6 +135,14 @@ fun createNavEntryProvider(
             )
         }
         entry<AlbumKey> { key ->
+            val albums by viewModel.albums.collectAsStateWithLifecycle()
+            val songs by viewModel.songs.collectAsStateWithLifecycle()
+            
+            val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
+            val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
+            val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
+            val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
+
             val album = remember(key, albums) {
                 albums.find { it.title == key.albumTitle }
             }
@@ -151,6 +170,13 @@ fun createNavEntryProvider(
             }
         }
         entry<PlayerKey> {
+            val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
+            val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
+            val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
+            val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
+            val shuffleEnabled by playbackViewModel.shuffleEnabled.collectAsStateWithLifecycle()
+            val repeatMode by playbackViewModel.repeatMode.collectAsStateWithLifecycle()
+
             PlayerScreen(
                 song = currentSong,
                 isPlaying = isPlaying,

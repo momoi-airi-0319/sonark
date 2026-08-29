@@ -2,12 +2,11 @@ package md.oak.sonark.data.repository
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
-import md.oak.sonark.data.database.AlbumDao
+import md.oak.sonark.data.AccountSession
+import md.oak.sonark.data.SessionManager
 import md.oak.sonark.data.database.AlbumEntity
-import md.oak.sonark.data.database.SongDao
 import md.oak.sonark.data.database.SongEntity
 import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.AlbumType
@@ -16,12 +15,18 @@ import md.oak.sonark.data.model.Song
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.provider.MusicProvider
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private fun <T> Flow<AccountSession?>.withSession(
+    transform: (AccountSession) -> Flow<List<T>>
+): Flow<List<T>> = flatMapLatest { session ->
+    if (session == null) flowOf(emptyList()) else transform(session)
+}
+
 class MusicRepository(
     context: Context,
-    private val songDao: SongDao,
-    private val albumDao: AlbumDao,
+    private val sessionManager: SessionManager,
     private val settingsRepository: SettingsRepository,
-    private val metadataManager: MetadataManager = MetadataManager(context, songDao, albumDao)
+    private val metadataManager: MetadataManager = MetadataManager(context, sessionManager)
 ) {
 
     private val providers = mutableMapOf<String, MusicProvider>()
@@ -35,8 +40,8 @@ class MusicRepository(
     /**
      * Returns a flow of SyncSongs, which include both metadata and synchronization state.
      */
-    fun getSyncSongsFlow(): Flow<List<SyncSong>> {
-        return albumDao.getAlbumsWithSongsFlow().map { albumWithSongs ->
+    fun getSyncSongsFlow(): Flow<List<SyncSong>> = sessionManager.currentSession.withSession { session ->
+        session.albumDao.getAlbumsWithSongsFlow().map { albumWithSongs ->
             albumWithSongs.flatMap { aws ->
                 aws.songs.map { songEntity ->
                     songEntity.toSyncSong(
@@ -52,8 +57,8 @@ class MusicRepository(
     /**
      * Returns a flow of ideal Songs (metadata only).
      */
-    fun getSongsFlow(): Flow<List<Song>> {
-        return albumDao.getAlbumsWithSongsFlow().map { albumWithSongs ->
+    fun getSongsFlow(): Flow<List<Song>> = sessionManager.currentSession.withSession { session ->
+        session.albumDao.getAlbumsWithSongsFlow().map { albumWithSongs ->
             albumWithSongs.flatMap { aws ->
                 aws.songs.map { songEntity ->
                     songEntity.toSong(
@@ -66,35 +71,42 @@ class MusicRepository(
         }
     }
 
-    fun getAlbumsFlow(): Flow<List<Album>> {
-        return albumDao.getAlbumsWithSongsFlow().map { entities ->
+    fun getAlbumsFlow(): Flow<List<Album>> = sessionManager.currentSession.withSession { session ->
+        session.albumDao.getAlbumsWithSongsFlow().map { entities ->
             entities.map { it.toAlbum() }
         }
     }
 
-    suspend fun syncAll() = withContext(Dispatchers.IO) {
-        val allSyncSongs = providers.values.flatMap { it.syncLibrary() }
-        if (allSyncSongs.isEmpty()) return@withContext
+    suspend fun syncAll() {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            val songDao = session.songDao
+            val albumDao = session.albumDao
 
-        val existingAlbums = albumDao.getAllAlbums().associateBy { it.id }
-        val albums = allSyncSongs.groupBy { it.albumId }.map { (albumId, syncSongs) ->
-            createAlbumEntity(albumId, syncSongs, existingAlbums[albumId])
+            val allSyncSongs = providers.values.flatMap { it.syncLibrary() }
+            if (allSyncSongs.isEmpty()) return@withContext
+
+            val existingAlbums = albumDao.getAllAlbums().associateBy { it.id }
+            val albums = allSyncSongs.groupBy { it.albumId }.map { (albumId, syncSongs) ->
+                createAlbumEntity(albumId, syncSongs, existingAlbums[albumId])
+            }
+            albumDao.insertAlbums(albums)
+
+            val existingSongs = songDao.getAllSongs().associateBy { it.id }
+            val songEntities = allSyncSongs.map { syncSong ->
+                createSongEntity(syncSong, existingSongs[syncSong.song.id])
+            }
+            
+            songDao.insertSongs(songEntities)
+
+            // Cleanup
+            songDao.deleteSongsNotIn(songEntities.map { it.id })
+            albumDao.deleteAlbumsNotIn(albums.map { it.id })
         }
-        albumDao.insertAlbums(albums)
-
-        val existingSongs = songDao.getAllSongs().associateBy { it.id }
-        val songEntities = allSyncSongs.map { syncSong ->
-            createSongEntity(syncSong, existingSongs[syncSong.song.id])
-        }
-        
-        songDao.insertSongs(songEntities)
-
-        // Cleanup
-        songDao.deleteSongsNotIn(songEntities.map { it.id })
-        albumDao.deleteAlbumsNotIn(albums.map { it.id })
     }
 
     private fun createAlbumEntity(albumId: String, syncSongs: List<SyncSong>, existing: AlbumEntity?): AlbumEntity {
+        // ... (rest of the private methods are same as before as they don't depend on DAOs directly except createSongEntity which I'll check)
         val firstSyncSong = syncSongs.first()
         val firstSong = firstSyncSong.song
 
@@ -158,7 +170,52 @@ class MusicRepository(
     }
 
     suspend fun downloadSong(songId: String) {
-        songDao.resetDownloadStatus(songId)
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            session.songDao.resumeDownload(songId) // Use resume logic to set to PENDING
+        }
+    }
+
+    suspend fun pauseDownload(songId: String) {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            session.songDao.pauseDownload(songId)
+        }
+    }
+
+    suspend fun pauseAlbumDownload(albumId: String) {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            session.songDao.pauseDownloadsByAlbum(albumId)
+        }
+    }
+
+    suspend fun resumeDownload(songId: String) {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            session.songDao.resumeDownload(songId)
+        }
+    }
+
+    suspend fun resumeAlbumDownload(albumId: String) {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            session.songDao.resumeDownloadsByAlbum(albumId)
+        }
+    }
+
+    suspend fun pauseAllDownloads() {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            session.songDao.pauseAllDownloads()
+        }
+    }
+
+    suspend fun resumeAllDownloads() {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            session.songDao.resumeAllDownloads()
+        }
     }
 
     suspend fun fetchMetadata(songId: String) {

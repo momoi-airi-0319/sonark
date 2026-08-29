@@ -2,56 +2,68 @@ package md.oak.sonark.data.repository
 
 import android.content.Context
 import android.media.MediaMetadataRetriever
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import md.oak.sonark.data.database.AlbumDao
+import md.oak.sonark.data.SessionManager
 import md.oak.sonark.data.database.AlbumEntity
-import md.oak.sonark.data.database.SongDao
-import md.oak.sonark.data.database.SongEntity
 import md.oak.sonark.data.model.AlbumType
 import java.io.File
 import java.io.FileOutputStream
 
 class MetadataManager(
     context: Context,
-    private val songDao: SongDao,
-    private val albumDao: AlbumDao
+    private val sessionManager: SessionManager
 ) {
     private val cacheDir = File(context.cacheDir, "music_cache").apply { if (!exists()) mkdirs() }
 
-    suspend fun fetchMetadata(songId: String) = withContext(Dispatchers.IO) {
-        val entity = songDao.getSongById(songId) ?: throw IllegalArgumentException("Song not found: $songId")
-        val localPath = entity.localPath ?: return@withContext // Nothing to fetch if not downloaded
-        
-        val album = albumDao.getAlbumById(entity.albumId) ?: throw IllegalStateException("Album not found for song: $songId")
+    suspend fun fetchMetadata(songId: String) {
+        val session = sessionManager.currentSession.value ?: return
+        withContext(session.scope.coroutineContext + Dispatchers.IO) {
+            val songDao = session.songDao
+            val albumDao = session.albumDao
 
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(localPath)
-            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown Artist"
-            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: entity.title
-            val totalDuration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-            
-            updateAlbumArt(retriever, album, entity.id)
-
-            if (album.type == AlbumType.CUE) {
-                updateCueSongsDuration(album.id, totalDuration)
-            } else {
-                songDao.updateSong(entity.copy(
-                    artist = artist,
-                    title = title,
-                    duration = totalDuration
-                ))
+            val entity = songDao.getSongById(songId) ?: run {
+                Log.w("MetadataManager", "Song not found: $songId")
+                return@withContext
             }
-        } finally {
-            retriever.release()
+            val localPath = entity.localPath ?: return@withContext // Nothing to fetch if not downloaded
+            
+            val album = albumDao.getAlbumById(entity.albumId) ?: throw IllegalStateException("Album not found for song: $songId")
+
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(localPath)
+                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "Unknown Artist"
+                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: entity.title
+                val totalDuration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+                
+                updateAlbumArt(retriever, album, entity.id, albumDao)
+
+                if (album.type == AlbumType.CUE) {
+                    updateCueSongsDuration(album.id, totalDuration, songDao)
+                } else {
+                    songDao.updateSong(entity.copy(
+                        artist = artist,
+                        title = title,
+                        duration = totalDuration
+                    ))
+                }
+            } finally {
+                retriever.release()
+            }
         }
     }
 
-    private suspend fun updateAlbumArt(retriever: MediaMetadataRetriever, album: AlbumEntity, songId: String) {
+    private suspend fun updateAlbumArt(retriever: MediaMetadataRetriever, album: AlbumEntity, songId: String, albumDao: md.oak.sonark.data.database.AlbumDao) {
         var imageUrl = album.imageUrl
         if (imageUrl == null || imageUrl.startsWith("https://")) {
-            val art = retriever.embeddedPicture
+            val art = try {
+                retriever.embeddedPicture
+            } catch (e: Exception) {
+                Log.e("MetadataManager", "Failed to get embedded picture", e)
+                null
+            }
             if (art != null) {
                 val artFile = File(cacheDir, "art_$songId.jpg")
                 if (!artFile.exists()) {
@@ -63,7 +75,7 @@ class MetadataManager(
         }
     }
 
-    private suspend fun updateCueSongsDuration(albumId: String, totalDuration: Long) {
+    private suspend fun updateCueSongsDuration(albumId: String, totalDuration: Long, songDao: md.oak.sonark.data.database.SongDao) {
         val cueSongs = songDao.getSongsByAlbum(albumId).sortedBy { it.startOffset }
         for (i in cueSongs.indices) {
             val current = cueSongs[i]

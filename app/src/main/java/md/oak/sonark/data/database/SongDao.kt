@@ -9,6 +9,9 @@ interface SongDao {
     @Query("SELECT * FROM songs")
     suspend fun getAllSongs(): List<SongEntity>
 
+    @Query("SELECT * FROM songs")
+    fun getAllSongsFlow(): Flow<List<SongEntity>>
+
     @Query("SELECT * FROM songs WHERE albumId = :albumId")
     suspend fun getSongsByAlbum(albumId: String): List<SongEntity>
 
@@ -36,6 +39,24 @@ interface SongDao {
     @Query("UPDATE songs SET localPath = :path, downloadStatus = 'COMPLETED', downloadProgress = 100 WHERE data = :dataUrl")
     suspend fun markUrlAsDownloaded(dataUrl: String, path: String)
 
-    @Query("UPDATE songs SET downloadStatus = 'PENDING', downloadProgress = 0 WHERE id = :id")
-    suspend fun resetDownloadStatus(id: String)
+    @Query("SELECT downloadStatus FROM songs WHERE data = :dataUrl")
+    suspend fun getSongStatusByUrl(dataUrl: String): DownloadStatus?
+
+    @Query("UPDATE songs SET downloadStatus = 'PAUSED' WHERE albumId = :albumId AND downloadStatus IN ('PENDING', 'DOWNLOADING', 'ERROR')")
+    suspend fun pauseDownloadsByAlbum(albumId: String)
+
+    @Query("UPDATE songs SET downloadStatus = 'PENDING' WHERE albumId = :albumId AND downloadStatus = 'PAUSED'")
+    suspend fun resumeDownloadsByAlbum(albumId: String)
+
+    @Query("UPDATE songs SET downloadStatus = 'PAUSED' WHERE id = :id AND downloadStatus IN ('PENDING', 'DOWNLOADING', 'ERROR')")
+    suspend fun pauseDownload(id: String)
+
+    @Query("UPDATE songs SET downloadStatus = 'PENDING' WHERE id = :id AND downloadStatus = 'PAUSED'")
+    suspend fun resumeDownload(id: String)
+
+    @Query("UPDATE songs SET downloadStatus = 'PAUSED' WHERE downloadStatus IN ('PENDING', 'DOWNLOADING', 'ERROR')")
+    suspend fun pauseAllDownloads()
+
+    @Query("UPDATE songs SET downloadStatus = 'PENDING' WHERE downloadStatus = 'PAUSED'")
+    suspend fun resumeAllDownloads()
 }

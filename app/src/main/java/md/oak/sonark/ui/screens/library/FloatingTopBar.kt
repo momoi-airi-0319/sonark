@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +61,24 @@ fun FloatingTopBar(
                     user = activeAccount,
                     size = 44.dp
                 )
+                if (activeAccount?.hasConnectionError == true) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 2.dp, end = 2.dp)
+                            .size(18.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        tonalElevation = 4.dp
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudOff,
+                            contentDescription = "Connection Error",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(2.dp)
+                        )
+                    }
+                }
             }
         }
 

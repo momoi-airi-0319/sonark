@@ -1,14 +1,18 @@
 package md.oak.sonark.data.repository
 
 import android.content.Context
+import android.os.Environment
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.File
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -16,10 +20,20 @@ class SettingsRepository(private val context: Context) {
     private val googleAccountNameKey = stringPreferencesKey("google_account_name")
     private val storedAccountsKey = stringPreferencesKey("stored_accounts")
 
+    fun getAccountMusicDir(email: String): File {
+        val accountHash = email.hashCode().toString()
+        return File(context.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "sonark_music/$accountHash")
+    }
+
+    fun getAccountDatabaseFile(email: String): File {
+        val name = "sonark_${email.hashCode()}.db"
+        return context.getDatabasePath(name)
+    }
+
     val googleAccountName: Flow<String?> = context.dataStore.data
         .map { preferences ->
             preferences[googleAccountNameKey]
-        }
+        }.distinctUntilChanged()
 
     val storedAccounts: Flow<List<UserAccount>> = context.dataStore.data
         .map { preferences ->
@@ -29,7 +43,7 @@ class SettingsRepository(private val context: Context) {
             } catch (_: Exception) {
                 emptyList()
             }
-        }
+        }.distinctUntilChanged()
 
     suspend fun setGoogleAccountName(name: String?) {
         context.dataStore.edit { preferences ->

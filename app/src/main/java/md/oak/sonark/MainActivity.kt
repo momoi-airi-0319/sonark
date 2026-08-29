@@ -39,6 +39,7 @@ import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SearchViewModel
 import md.oak.sonark.ui.SettingsViewModel
+import md.oak.sonark.ui.UIState
 import md.oak.sonark.ui.components.DownloadQueueBottomSheet
 import md.oak.sonark.ui.components.FloatingNavItem
 import md.oak.sonark.ui.screens.library.AccountPopDialog
@@ -96,7 +97,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SonarkTheme {
                 val viewModel: MainViewModel = viewModel { 
-                    MainViewModel(Dependencies.musicRepository, Dependencies.accountRepository) 
+                    MainViewModel(Dependencies.musicRepository, Dependencies.accountRepository, Dependencies.settingsRepository) 
                 }
                 val searchViewModel: SearchViewModel = viewModel { SearchViewModel(Dependencies.musicRepository) }
                 val playbackViewModel: PlaybackViewModel = viewModel { PlaybackViewModel(application) }
@@ -105,7 +106,10 @@ class MainActivity : ComponentActivity() {
                 val coroutineScope = rememberCoroutineScope()
                 val downloadQueueState by viewModel.downloadQueue.collectAsStateWithLifecycle()
                 val googleAccountName by settingsViewModel.googleAccountName.collectAsStateWithLifecycle()
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+                val activeAccount by viewModel.activeAccount.collectAsStateWithLifecycle()
+                val otherAccounts by viewModel.otherAccounts.collectAsStateWithLifecycle()
                 val storageQuota by viewModel.storageQuota.collectAsStateWithLifecycle()
                 val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
 
@@ -113,15 +117,6 @@ class MainActivity : ComponentActivity() {
                 val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
                 val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
                 val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
-
-                val activeAccount = remember(accounts, googleAccountName) {
-                    if (googleAccountName == null) null
-                    else accounts.find { it.email.equals(googleAccountName, ignoreCase = true) }
-                        ?: md.oak.sonark.data.repository.UserAccount(
-                            name = googleAccountName?.split("@")?.firstOrNull() ?: "User",
-                            email = googleAccountName!!,
-                        )
-                }
 
                 val authLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.StartIntentSenderForResult()
@@ -186,9 +181,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                val otherAccounts = remember(accounts, activeAccount) {
-                    accounts.filter { it.email != activeAccount?.email }
-                }
                 val queueSize = remember(downloadQueueState) {
                     downloadQueueState.sumOf { it.totalSongs }
                 }
@@ -220,6 +212,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(googleAccountName) {
+                    playbackViewModel.stopPlayback()
                     if (googleAccountName != null) {
                         viewModel.refreshAccountInfo()
                     }
@@ -233,7 +226,16 @@ class MainActivity : ComponentActivity() {
                     navigator = navigator
                 )
 
-                if (activeAccount == null) {
+                val showLoginScreen = accounts.isEmpty() || accounts.all { !it.isLoggedIn }
+
+                LaunchedEffect(accounts, googleAccountName) {
+                    if (googleAccountName == null && accounts.any { it.isLoggedIn }) {
+                        val firstLoggedIn = accounts.first { it.isLoggedIn }
+                        settingsViewModel.setGoogleAccount(firstLoggedIn.email)
+                    }
+                }
+
+                if (showLoginScreen) {
                     LoginScreen(
                         onSignInClick = {
                             startSignIn()
@@ -275,6 +277,10 @@ class MainActivity : ComponentActivity() {
                         if (showQueue) {
                             DownloadQueueBottomSheet(
                                 queue = downloadQueueState,
+                                onPauseAll = { viewModel.pauseAllDownloads() },
+                                onResumeAll = { viewModel.resumeAllDownloads() },
+                                onPauseSong = { viewModel.pauseDownload(it) },
+                                onResumeSong = { viewModel.resumeDownload(it) },
                                 onDismissRequest = { showQueue = false }
                             )
                         }
@@ -286,6 +292,7 @@ class MainActivity : ComponentActivity() {
                                 storageQuota = storageQuota,
                                 downloadQueueSize = queueSize,
                                 sortOrder = sortOrder,
+                                isRefreshing = uiState == UIState.LOADING,
                                 onSortOrderChange = { viewModel.setSortOrder(it) },
                                 onRefresh = { viewModel.loadSongs() },
                                 onQueueClick = {
@@ -311,7 +318,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onAccountClick = { account ->
                                     showAccountDialog = false
-                                    if (account.email != activeAccount.email) {
+                                    if (account.email != activeAccount?.email || account.hasConnectionError) {
                                         if (!account.isLoggedIn) {
                                             startSignIn()
                                         } else {

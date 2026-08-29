@@ -17,19 +17,41 @@ abstract class SonarkDatabase : RoomDatabase() {
     abstract fun albumDao(): AlbumDao
 
     companion object {
-        @Volatile
-        private var INSTANCE: SonarkDatabase? = null
+        private val instances = mutableMapOf<String, SonarkDatabase>()
 
-        fun getDatabase(context: Context): SonarkDatabase =
-            INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
+        private fun getDatabaseName(email: String?): String {
+            return if (email == null) "sonark_database" else "sonark_${email.hashCode()}.db"
+        }
+
+        fun getDatabase(context: Context, email: String? = null): SonarkDatabase {
+            val name = getDatabaseName(email)
+            return synchronized(this) {
+                instances[name]?.takeIf { it.isOpen } ?: Room.databaseBuilder(
                     context.applicationContext,
                     SonarkDatabase::class.java,
-                    "sonark_database"
+                    name
                 )
                 .fallbackToDestructiveMigration(true)
                 .build()
-                .also { INSTANCE = it }
+                .also { instances[name] = it }
             }
+        }
+
+        /**
+         * Closes the database instance for the given email only if it matches the provided [instance].
+         * If [instance] is null, closes and removes whatever is currently cached.
+         */
+        fun closeAndRemoveInstance(email: String, instance: SonarkDatabase? = null) {
+            val name = getDatabaseName(email)
+            synchronized(this) {
+                val current = instances[name]
+                if (instance == null || current == instance) {
+                    instances.remove(name)
+                    if (current?.isOpen == true) {
+                        current.close()
+                    }
+                }
+            }
+        }
     }
 }

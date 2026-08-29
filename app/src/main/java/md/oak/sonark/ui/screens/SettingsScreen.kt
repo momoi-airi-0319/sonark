@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.SettingsViewModel
 import md.oak.sonark.ui.components.UserAvatar
+import md.oak.sonark.ui.utils.Formatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,10 +31,16 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val accounts by viewModel.storedAccounts.collectAsStateWithLifecycle()
+    val storageUsage by viewModel.accountStorageUsage.collectAsStateWithLifecycle()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.refreshStorageUsage()
+    }
     
     SettingsContent(
         accounts = accounts,
-        onRemoveAccount = { viewModel.removeAccount(it) },
+        storageUsage = storageUsage,
+        onClearCache = { viewModel.clearCache(it) },
         onBackClick = onBackClick,
         modifier = modifier
     )
@@ -43,7 +50,8 @@ fun SettingsScreen(
 @Composable
 fun SettingsContent(
     accounts: List<UserAccount>,
-    onRemoveAccount: (String) -> Unit,
+    storageUsage: Map<String, Long>,
+    onClearCache: (String) -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -69,7 +77,7 @@ fun SettingsContent(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            SettingsSection(title = "Accounts") {
+            SettingsSection(title = "Storage Management") {
                 if (accounts.isEmpty()) {
                     Text(
                         text = "No accounts stored.",
@@ -78,9 +86,10 @@ fun SettingsContent(
                     )
                 } else {
                     accounts.forEach { account ->
-                        AccountManagementItem(
+                        AccountStorageItem(
                             account = account,
-                            onRemove = { onRemoveAccount(account.email) }
+                            usage = storageUsage[account.email] ?: 0L,
+                            onClearCache = { onClearCache(account.email) }
                         )
                     }
                 }
@@ -103,9 +112,10 @@ fun SettingsContent(
 }
 
 @Composable
-fun AccountManagementItem(
+fun AccountStorageItem(
     account: UserAccount,
-    onRemove: () -> Unit
+    usage: Long,
+    onClearCache: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -118,16 +128,17 @@ fun AccountManagementItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = account.name, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = account.email,
+                text = "${account.email} • ${Formatter.formatFileSize(usage)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        IconButton(onClick = onRemove) {
+        
+        IconButton(onClick = onClearCache) {
             Icon(
                 imageVector = Icons.Rounded.Delete,
-                contentDescription = "Remove Account",
-                tint = MaterialTheme.colorScheme.error
+                contentDescription = "Clear Cache",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

@@ -1,5 +1,6 @@
 package md.oak.sonark.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
@@ -11,6 +12,8 @@ import md.oak.sonark.data.model.DownloadStatus
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.repository.AccountRepository
 import md.oak.sonark.data.repository.MusicRepository
+import md.oak.sonark.data.repository.SettingsRepository
+import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.model.AlbumDownloadItem
 import md.oak.sonark.ui.utils.ArtistUtils
 
@@ -25,6 +28,7 @@ enum class UIState {
 class MainViewModel(
     private val repository: MusicRepository,
     private val accountRepository: AccountRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UIState.LOADING)
@@ -32,6 +36,25 @@ class MainViewModel(
 
     val accounts = accountRepository.accounts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val storageQuota = accountRepository.storageQuota.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val activeAccount: StateFlow<UserAccount?> = combine(
+        accountRepository.accounts,
+        settingsRepository.googleAccountName
+    ) { accounts, activeEmail ->
+        if (activeEmail == null) null
+        else accounts.find { it.email.equals(activeEmail, ignoreCase = true) }
+            ?: UserAccount(
+                name = activeEmail.split("@").firstOrNull() ?: "User",
+                email = activeEmail,
+            )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val otherAccounts: StateFlow<List<UserAccount>> = combine(
+        accountRepository.accounts,
+        activeAccount
+    ) { accounts, active ->
+        accounts.filter { it.email != active?.email }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
@@ -157,7 +180,10 @@ class MainViewModel(
             try {
                 repository.syncAll()
                 _uiState.value = UIState.SUCCESS
-            } catch (_: Exception) {
+                updateActiveAccountError(false)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Sync failed", e)
+                updateActiveAccountError(true)
                 if (albums.value.isEmpty()) {
                     _uiState.value = UIState.ERROR
                 }
@@ -165,11 +191,23 @@ class MainViewModel(
         }
     }
 
+    private suspend fun updateActiveAccountError(hasError: Boolean) {
+        val currentAccount = activeAccount.value ?: return
+        if (currentAccount.hasConnectionError != hasError) {
+            settingsRepository.addOrUpdateAccount(currentAccount.copy(hasConnectionError = hasError))
+        }
+    }
+
     fun refreshAccountInfo() {
         viewModelScope.launch {
             val provider = repository.getProvider("google_drive") as? md.oak.sonark.data.provider.DriveMusicProvider
             val driveService = provider?.let { createDriveService(it) }
-            accountRepository.refreshQuota(driveService)
+            try {
+                accountRepository.refreshQuota(driveService)
+                updateActiveAccountError(false)
+            } catch (e: Exception) {
+                updateActiveAccountError(true)
+            }
         }
     }
 
@@ -220,9 +258,37 @@ class MainViewModel(
         viewModelScope.launch {
             songs.forEach { song ->
                 if (song.localPath == null) {
-                    repository.downloadSong(song.song.id)
+                    repository.resumeDownload(song.song.id)
                 }
             }
+        }
+    }
+
+    fun pauseDownload(id: String) {
+        viewModelScope.launch {
+            // Check if it's an album ID or song ID. For now assume album ID from UI.
+            // In a better design we might distinguish them, but let's try both.
+            repository.pauseAlbumDownload(id)
+            repository.pauseDownload(id)
+        }
+    }
+
+    fun resumeDownload(id: String) {
+        viewModelScope.launch {
+            repository.resumeAlbumDownload(id)
+            repository.resumeDownload(id)
+        }
+    }
+
+    fun pauseAllDownloads() {
+        viewModelScope.launch {
+            repository.pauseAllDownloads()
+        }
+    }
+
+    fun resumeAllDownloads() {
+        viewModelScope.launch {
+            repository.resumeAllDownloads()
         }
     }
 }

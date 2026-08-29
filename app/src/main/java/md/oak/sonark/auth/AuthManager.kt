@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
@@ -57,10 +58,11 @@ class AuthManager(private val context: Context) {
             val credential = result.credential
             
             Log.d("AuthManager", "Received credential type: ${credential.type}")
+            Log.d("AuthManager", "Expected type: ${GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL}")
             
             if (credential is GoogleIdTokenCredential) {
                 SignInResult.Success(credential)
-            } else if (credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+            } else if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 try {
                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                     SignInResult.Success(googleIdTokenCredential)
@@ -68,7 +70,7 @@ class AuthManager(private val context: Context) {
                     SignInResult.Failure("PARSING_ERROR", "Failed to parse GoogleIdTokenCredential: ${e.message}")
                 }
             } else {
-                SignInResult.Failure("UNKNOWN_TYPE", "Got: ${credential.type}")
+                SignInResult.Failure("UNKNOWN_TYPE", "Expected GoogleIdTokenCredential but got ${credential.type}")
             }
         } catch (e: GetCredentialException) {
             Log.e("AuthManager", "SignIn failed: ${e.type} - ${e.message}", e)

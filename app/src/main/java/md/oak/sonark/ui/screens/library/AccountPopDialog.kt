@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,6 +30,7 @@ fun AccountPopDialog(
     storageQuota: StorageQuota?,
     downloadQueueSize: Int,
     sortOrder: SortOrder,
+    isRefreshing: Boolean = false,
     onSortOrderChange: (SortOrder) -> Unit,
     onRefresh: () -> Unit,
     onQueueClick: () -> Unit,
@@ -49,6 +51,7 @@ fun AccountPopDialog(
             storageQuota = storageQuota,
             downloadQueueSize = downloadQueueSize,
             sortOrder = sortOrder,
+            isRefreshing = isRefreshing,
             onSortOrderChange = onSortOrderChange,
             onRefresh = onRefresh,
             onQueueClick = onQueueClick,
@@ -70,6 +73,7 @@ private fun AccountDialogContent(
     storageQuota: StorageQuota?,
     downloadQueueSize: Int,
     sortOrder: SortOrder,
+    isRefreshing: Boolean,
     onSortOrderChange: (SortOrder) -> Unit,
     onRefresh: () -> Unit,
     onQueueClick: () -> Unit,
@@ -102,6 +106,16 @@ private fun AccountDialogContent(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.align(Alignment.Center)
             )
+            if (isRefreshing) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .height(2.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
+            }
         }
 
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -218,7 +232,7 @@ private fun ActiveAccountItem(account: UserAccount) {
             user = account,
             size = 48.dp,
             isSelected = true,
-            showEditIcon = true
+            showEditIcon = false
         )
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -242,6 +256,8 @@ private fun ActiveAccountItem(account: UserAccount) {
 
 @Composable
 private fun AccountItem(account: UserAccount, onClick: () -> Unit) {
+    val alpha = if (account.isLoggedIn) 1f else 0.5f
+    
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -249,9 +265,11 @@ private fun AccountItem(account: UserAccount, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        UserAvatar(user = account, size = 32.dp)
+        Box(modifier = Modifier.alpha(alpha)) {
+            UserAvatar(user = account, size = 32.dp)
+        }
         Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).alpha(alpha)) {
             Text(
                 text = account.name,
                 style = MaterialTheme.typography.bodyLarge,
@@ -261,6 +279,14 @@ private fun AccountItem(account: UserAccount, onClick: () -> Unit) {
                 text = account.email,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (account.hasConnectionError) {
+            Icon(
+                imageVector = Icons.Default.CloudOff,
+                contentDescription = "Connection Error",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = 8.dp).size(20.dp)
             )
         }
         if (!account.isLoggedIn) {

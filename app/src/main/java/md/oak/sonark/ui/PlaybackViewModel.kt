@@ -181,6 +181,14 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun stopPlayback() {
+        val controller = this.controller ?: return
+        controller.stop()
+        controller.clearMediaItems()
+        _currentSong.value = null
+        _queue.value = emptyList()
+    }
+
     fun toggleShuffle() {
         val controller = this.controller ?: return
         controller.shuffleModeEnabled = !controller.shuffleModeEnabled

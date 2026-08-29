@@ -16,6 +16,7 @@ data class UserAccount(
     val profileImageUrl: String? = null,
     val isPro: Boolean = false,
     val isLoggedIn: Boolean = true,
+    val hasConnectionError: Boolean = false,
 )
 
 data class StorageQuota(
@@ -63,6 +64,7 @@ class AccountRepository(private val settingsRepository: SettingsRepository) {
             }
         } catch (e: Exception) {
             Log.e("AccountRepository", "Error refreshing quota", e)
+            throw e
         }
     }
 }
