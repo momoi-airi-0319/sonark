@@ -120,7 +120,11 @@ private class SonarkDataSource(
 
     private fun getHeadersForUrl(url: String): Map<String, String> {
         return when {
-            url.contains("googleapis.com") -> Dependencies.driveProvider.getAuthHeaders()
+            url.contains("googleapis.com") -> {
+                // Bridge to the new central auth logic
+                val token = Dependencies.authManager.getLastKnownToken()
+                if (token != null) mapOf("Authorization" to "Bearer $token") else emptyMap()
+            }
             else -> emptyMap()
         }
     }

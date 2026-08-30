@@ -56,6 +56,9 @@ android {
         buildConfig = true
     }
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/INDEX.LIST"
@@ -111,6 +114,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.moshi.kotlin)
     implementation(libs.okhttp)
+    implementation(project(":rust-sdk"))
     implementation(libs.play.services.location)
     implementation(libs.retrofit)
     testImplementation(libs.androidx.core)

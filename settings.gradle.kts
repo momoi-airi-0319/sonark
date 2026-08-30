@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Sonark"
 include(":app")
+include(":rust-sdk")

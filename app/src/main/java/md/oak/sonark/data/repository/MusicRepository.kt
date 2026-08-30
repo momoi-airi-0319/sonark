@@ -1,254 +1,146 @@
 package md.oak.sonark.data.repository
 
-import android.content.Context
-import android.util.Log
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.withContext
-import md.oak.sonark.data.AccountSession
-import md.oak.sonark.data.Dependencies
-import md.oak.sonark.data.SessionManager
-import md.oak.sonark.data.database.AlbumEntity
-import md.oak.sonark.data.database.SongEntity
-import md.oak.sonark.data.model.Album
-import md.oak.sonark.data.model.AlbumType
-import md.oak.sonark.data.model.DownloadStatus
-import md.oak.sonark.data.model.Song
-import md.oak.sonark.data.model.SyncSong
-import md.oak.sonark.data.provider.MusicProvider
-
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-private fun <T> Flow<AccountSession?>.withSession(
-    transform: (AccountSession) -> Flow<List<T>>
-): Flow<List<T>> = flatMapLatest { session ->
-    if (session == null) flowOf(emptyList()) else transform(session)
-}
+import md.oak.sonark.data.model.*
+import uniffi.sonark_sdk.*
+import uniffi.sonark_sdk.Song as RustSong
+import md.oak.sonark.data.model.Song as KotlinSong
+import md.oak.sonark.data.model.DownloadStatus as KotlinStatus
+import md.oak.sonark.data.model.Album as KotlinAlbum
 
 class MusicRepository(
-    context: Context,
-    private val sessionManager: SessionManager,
-    private val settingsRepository: SettingsRepository,
-    private val metadataManager: MetadataManager = MetadataManager(context, sessionManager)
+    private val engine: SonarkEngine
 ) {
+    private val _songsFlow = MutableStateFlow<List<SyncSong>>(emptyList())
+    val songsFlow: StateFlow<List<SyncSong>> = _songsFlow.asStateFlow()
 
-    private val providers = mutableMapOf<String, MusicProvider>()
-
-    fun registerProvider(provider: MusicProvider) {
-        providers[provider.id] = provider
+    init {
+        refreshLocalCache()
+        engine.setObserver(object : SonarkObserver {
+            override fun onDownloadProgress(progress: DownloadProgress) {
+                this@MusicRepository.onDownloadProgress(progress)
+            }
+            override fun onSyncComplete(songs: List<RustSong>) {
+                this@MusicRepository.onSyncComplete(songs)
+            }
+            override fun onError(message: String) {
+                // Handle error
+            }
+        })
     }
 
-    fun getProvider(id: String): MusicProvider? = providers[id]
+    fun getSyncSongsFlow(): Flow<List<SyncSong>> = songsFlow
 
-    /**
-     * Returns a flow of SyncSongs, which include both metadata and synchronization state.
-     */
-    fun getSyncSongsFlow(): Flow<List<SyncSong>> = sessionManager.currentSession.withSession { session ->
-        session.albumDao.getAlbumsWithSongsFlow().map { albumWithSongs ->
-            albumWithSongs.flatMap { aws ->
-                aws.songs.map { songEntity ->
-                    songEntity.toSyncSong(
-                        albumTitle = aws.album.title,
-                        imageUrl = aws.album.imageUrl,
-                        type = aws.album.type
+    fun getAlbumsFlow(): Flow<List<KotlinAlbum>> = songsFlow.map { syncSongs ->
+        syncSongs.groupBy { it.albumId }.map { (_, songs) ->
+            val first = songs.first()
+            val albumSongs = songs.map { it.song }
+            if (songs.any { it.song.type == AlbumType.CUE }) {
+                KotlinAlbum.Cue(
+                    title = first.song.album,
+                    artist = first.song.artist,
+                    imageUrl = first.song.imageUrl,
+                    localPath = first.localPath,
+                    songs = albumSongs
+                )
+            } else {
+                KotlinAlbum.Normal(
+                    title = first.song.album,
+                    artist = first.song.artist,
+                    imageUrl = first.song.imageUrl,
+                    localPath = first.localPath,
+                    songs = albumSongs
+                )
+            }
+        }
+    }
+
+    private fun refreshLocalCache() {
+        val rustSongs = engine.getAllSongs()
+        _songsFlow.value = rustSongs.map { it.toSyncSong() }
+    }
+
+    fun syncAll() {
+        engine.syncLibrary()
+    }
+
+    private fun onSyncComplete(rustSongs: List<RustSong>) {
+        _songsFlow.value = rustSongs.map { it.toSyncSong() }
+    }
+
+    private fun onDownloadProgress(progress: DownloadProgress) {
+        _songsFlow.update { current ->
+            current.map { 
+                if (it.song.id == progress.songId) {
+                    it.copy(
+                        downloadStatus = KotlinStatus.DOWNLOADING,
+                        downloadedBytes = progress.downloadedBytes.toLong(),
+                        downloadProgress = if (progress.totalBytes > 0uL) (progress.downloadedBytes * 100uL / progress.totalBytes).toInt() else 0
                     )
-                }
+                } else it
             }
         }
     }
 
-    /**
-     * Returns a flow of ideal Songs (metadata only).
-     */
-    fun getSongsFlow(): Flow<List<Song>> = sessionManager.currentSession.withSession { session ->
-        session.albumDao.getAlbumsWithSongsFlow().map { albumWithSongs ->
-            albumWithSongs.flatMap { aws ->
-                aws.songs.map { songEntity ->
-                    songEntity.toSong(
-                        albumTitle = aws.album.title,
-                        imageUrl = aws.album.imageUrl,
-                        type = aws.album.type
-                    )
-                }
+    fun resumeDownload(songId: String) {
+        val song = _songsFlow.value.find { it.song.id == songId } ?: return
+        engine.startDownload(songId, song.data, song.localPath ?: "")
+    }
+
+    fun pauseDownload(songId: String) {}
+    fun pauseAlbumDownload(albumId: String) {}
+
+    fun resumeAlbumDownload(albumId: String) {
+        _songsFlow.value.filter { it.albumId == albumId && it.downloadStatus != KotlinStatus.COMPLETED }
+            .forEach { resumeDownload(it.song.id) }
+    }
+
+    fun pauseAllDownloads() {}
+    fun resumeAllDownloads() {}
+
+    fun fetchMetadata(songId: String) {
+        val song = _songsFlow.value.find { it.song.id == songId } ?: return
+        song.localPath?.let { path ->
+            engine.scanLocalMetadata(songId, path)?.let {
+                refreshLocalCache()
             }
         }
     }
 
-    fun getAlbumsFlow(): Flow<List<Album>> = sessionManager.currentSession.withSession { session ->
-        session.albumDao.getAlbumsWithSongsFlow().map { entities ->
-            entities.map { it.toAlbum() }
-        }
-    }
+    fun getProvider(id: String): Any? = null 
 
-    suspend fun syncAll() {
-        val session = sessionManager.currentSession.value ?: run {
-            Log.w("MusicRepository", "syncAll skipped: No active session")
-            return
-        }
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            val songDao = session.songDao
-            val albumDao = session.albumDao
-
-            Log.d("MusicRepository", "Starting sync for session: ${session.email}")
-            var allSyncSongs: List<SyncSong> = emptyList()
-            
-            try {
-                allSyncSongs = providers.values.flatMap { it.syncLibrary() }
-            } catch (e: com.google.api.client.googleapis.json.GoogleJsonResponseException) {
-                if (e.statusCode == 401) {
-                    Log.d("MusicRepository", "Sync failed with 401, attempting silent re-auth...")
-                    val newToken = Dependencies.authManager.silentSignIn(session.email)
-                    if (newToken != null) {
-                        Log.d("MusicRepository", "Silent re-auth successful, retrying sync...")
-                        allSyncSongs = providers.values.flatMap { it.syncLibrary() }
-                    } else {
-                        Log.e("MusicRepository", "Silent re-auth failed, cannot retry sync")
-                        throw e
-                    }
-                } else {
-                    throw e
-                }
-            }
-
-            if (allSyncSongs.isEmpty()) {
-                Log.d("MusicRepository", "No songs found across providers")
-                return@withContext
-            }
-
-            val existingAlbums = albumDao.getAllAlbums().associateBy { it.id }
-            val albums = allSyncSongs.groupBy { it.albumId }.map { (albumId, syncSongs) ->
-                createAlbumEntity(albumId, syncSongs, existingAlbums[albumId])
-            }
-            albumDao.insertAlbums(albums)
-
-            val existingSongs = songDao.getAllSongs().associateBy { it.id }
-            val songEntities = allSyncSongs.map { syncSong ->
-                createSongEntity(syncSong, existingSongs[syncSong.song.id])
-            }
-            
-            songDao.insertSongs(songEntities)
-
-            // Cleanup
-            songDao.deleteSongsNotIn(songEntities.map { it.id })
-            albumDao.deleteAlbumsNotIn(albums.map { it.id })
-        }
-    }
-
-    private fun createAlbumEntity(albumId: String, syncSongs: List<SyncSong>, existing: AlbumEntity?): AlbumEntity {
-        // ... (rest of the private methods are same as before as they don't depend on DAOs directly except createSongEntity which I'll check)
-        val firstSyncSong = syncSongs.first()
-        val firstSong = firstSyncSong.song
-
-        val isFullyDownloaded = existing != null &&
-                               existing.localPath != null &&
-                               existing.downloadStatus == DownloadStatus.COMPLETED &&
-                               existing.md5Hash == firstSyncSong.coverMd5 &&
-                               java.io.File(existing.localPath).exists()
-
-        val isDownloading = existing != null &&
-                           existing.downloadStatus == DownloadStatus.DOWNLOADING &&
-                           existing.md5Hash == firstSyncSong.coverMd5
-
-        return AlbumEntity(
-            id = albumId,
-            title = firstSong.album,
-            artist = firstSong.artist.takeIf { it != "Unknown Artist" } ?: "Various Artists",
-            imageUrl = syncSongs.firstOrNull { it.song.imageUrl != null }?.song?.imageUrl,
-            localPath = existing?.localPath,
-            downloadStatus = when {
-                isFullyDownloaded -> DownloadStatus.COMPLETED
-                isDownloading -> DownloadStatus.DOWNLOADING
-                firstSyncSong.coverData == null -> DownloadStatus.NONE
-                else -> existing?.downloadStatus ?: DownloadStatus.PENDING
-            },
-            downloadProgress = if (isDownloading) existing.downloadProgress else (existing?.downloadProgress ?: 0),
-            downloadedBytes = if (isDownloading) existing.downloadedBytes else (existing?.downloadedBytes ?: 0),
-            size = firstSyncSong.coverSize,
-            md5Hash = firstSyncSong.coverMd5,
-            type = if (syncSongs.any { it.song.type == AlbumType.CUE }) AlbumType.CUE else AlbumType.NORMAL
-        )
-    }
-
-    private fun createSongEntity(syncSong: SyncSong, existing: SongEntity?): SongEntity {
-        val isFullyDownloaded = existing != null && 
-                           existing.localPath != null && 
-                           existing.downloadStatus == DownloadStatus.COMPLETED && 
-                           existing.md5Hash == syncSong.md5Hash &&
-                           java.io.File(existing.localPath).exists()
-        
-        val isDownloading = existing != null &&
-                           existing.downloadStatus == DownloadStatus.DOWNLOADING &&
-                           existing.md5Hash == syncSong.md5Hash
-        
-        val hasValidMetadata = existing != null && existing.artist != "Unknown Artist"
-
-        val finalSyncSong = syncSong.copy(
-            song = syncSong.song.copy(
-                artist = if (hasValidMetadata) existing.artist else syncSong.song.artist,
-                title = if (hasValidMetadata) existing.title else syncSong.song.title,
-                duration = if (hasValidMetadata) existing.duration else syncSong.song.duration
+    private fun RustSong.toSyncSong(): SyncSong {
+        return SyncSong(
+            song = KotlinSong(
+                id = this.id,
+                title = this.title,
+                artist = this.artist,
+                album = this.album,
+                duration = this.durationMs.toLong(),
+                imageUrl = this.coverUrl,
+                trackNumber = this.trackNumber.toInt(),
+                discNumber = this.discNumber.toInt(),
+                type = if (this.isCue) AlbumType.CUE else AlbumType.NORMAL
             ),
-            downloadStatus = when {
-                isFullyDownloaded -> DownloadStatus.COMPLETED
-                isDownloading -> DownloadStatus.DOWNLOADING
-                else -> existing?.downloadStatus ?: DownloadStatus.PENDING
-            },
-            localPath = existing?.localPath,
-            downloadProgress = if (isDownloading) existing.downloadProgress else (existing?.downloadProgress ?: 0),
-            downloadedBytes = if (isDownloading) existing.downloadedBytes else (existing?.downloadedBytes ?: 0)
+            data = this.dataUrl,
+            albumId = this.albumId,
+            providerId = "rust_engine",
+            size = this.size.toLong(),
+            md5Hash = this.md5Hash,
+            localPath = this.localPath,
+            downloadStatus = this.downloadStatus.toKotlin(),
+            startOffset = this.startOffsetMs.toLong()
         )
-        return SongEntity.fromSyncSong(finalSyncSong)
     }
 
-    suspend fun downloadSong(songId: String) {
-        val session = sessionManager.currentSession.value ?: return
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            session.songDao.resumeDownload(songId) // Use resume logic to set to PENDING
+    private fun uniffi.sonark_sdk.DownloadStatus.toKotlin(): KotlinStatus {
+        return when (this) {
+            uniffi.sonark_sdk.DownloadStatus.NONE -> KotlinStatus.NONE
+            uniffi.sonark_sdk.DownloadStatus.PENDING -> KotlinStatus.PENDING
+            uniffi.sonark_sdk.DownloadStatus.DOWNLOADING -> KotlinStatus.DOWNLOADING
+            uniffi.sonark_sdk.DownloadStatus.COMPLETED -> KotlinStatus.COMPLETED
+            uniffi.sonark_sdk.DownloadStatus.PAUSED -> KotlinStatus.PAUSED
+            uniffi.sonark_sdk.DownloadStatus.ERROR -> KotlinStatus.ERROR
         }
-    }
-
-    suspend fun pauseDownload(songId: String) {
-        val session = sessionManager.currentSession.value ?: return
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            session.songDao.pauseDownload(songId)
-        }
-    }
-
-    suspend fun pauseAlbumDownload(albumId: String) {
-        val session = sessionManager.currentSession.value ?: return
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            session.songDao.pauseDownloadsByAlbum(albumId)
-        }
-    }
-
-    suspend fun resumeDownload(songId: String) {
-        val session = sessionManager.currentSession.value ?: return
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            session.songDao.resumeDownload(songId)
-        }
-    }
-
-    suspend fun resumeAlbumDownload(albumId: String) {
-        val session = sessionManager.currentSession.value ?: return
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            session.songDao.resumeDownloadsByAlbum(albumId)
-        }
-    }
-
-    suspend fun pauseAllDownloads() {
-        val session = sessionManager.currentSession.value ?: return
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            session.songDao.pauseAllDownloads()
-        }
-    }
-
-    suspend fun resumeAllDownloads() {
-        val session = sessionManager.currentSession.value ?: return
-        withContext(session.scope.coroutineContext + Dispatchers.IO) {
-            session.songDao.resumeAllDownloads()
-        }
-    }
-
-    suspend fun fetchMetadata(songId: String) {
-        metadataManager.fetchMetadata(songId)
     }
 }

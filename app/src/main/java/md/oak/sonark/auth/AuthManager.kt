@@ -12,11 +12,9 @@ import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.suspendCancellableCoroutine
 import md.oak.sonark.BuildConfig
-import md.oak.sonark.data.Dependencies
 import kotlin.coroutines.resume
 
 sealed class SignInResult {
@@ -28,26 +26,15 @@ class AuthManager(private val context: Context) {
 
     private val credentialManager = CredentialManager.create(context)
     private val WEB_CLIENT_ID = BuildConfig.GOOGLE_WEB_CLIENT_ID
+    
+    @Volatile
+    private var lastAccessToken: String? = null
+
+    fun getLastKnownToken(): String? = lastAccessToken
 
     fun updateDriveService(accessToken: String?, accountEmail: String?) {
-        if (accessToken != null && accountEmail != null) {
-            try {
-                val credential = GoogleAccountCredential.usingOAuth2(
-                    context, listOf(DriveScopes.DRIVE_READONLY)
-                ).apply {
-                    selectedAccountName = accountEmail
-                }
-                Dependencies.driveProvider.updateAccessToken(accessToken)
-                Dependencies.driveProvider.credential = credential
-            } catch (e: Exception) {
-                Log.e("Sonark", "Error updating drive service", e)
-                Dependencies.driveProvider.updateAccessToken(null)
-                Dependencies.driveProvider.credential = null
-            }
-        } else {
-            Dependencies.driveProvider.updateAccessToken(null)
-            Dependencies.driveProvider.credential = null
-        }
+        lastAccessToken = accessToken
+        // Logic for Google Drive SDK (if still used elsewhere)
     }
 
     suspend fun signIn(): SignInResult {
@@ -61,9 +48,6 @@ class AuthManager(private val context: Context) {
         return try {
             val result = credentialManager.getCredential(context, request)
             val credential = result.credential
-            
-            Log.d("AuthManager", "Received credential type: ${credential.type}")
-            Log.d("AuthManager", "Expected type: ${GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL}")
             
             if (credential is GoogleIdTokenCredential) {
                 SignInResult.Success(credential)
@@ -90,7 +74,6 @@ class AuthManager(private val context: Context) {
             .setRequestedScopes(listOf(Scope(DriveScopes.DRIVE_READONLY)))
             .requestOfflineAccess(WEB_CLIENT_ID)
         
-        // CRITICAL: Specify the account to ensure Google returns the correct token for this specific user.
         email?.let { 
             builder.setAccount(android.accounts.Account(it, "com.google"))
         }
@@ -101,16 +84,11 @@ class AuthManager(private val context: Context) {
     suspend fun signOut(onComplete: () -> Unit) {
         try {
             credentialManager.clearCredentialState(ClearCredentialStateRequest())
-            updateDriveService(null, null)
+            lastAccessToken = null
             onComplete()
         } catch (e: Exception) {
             Log.e("AuthManager", "SignOut failed", e)
         }
-    }
-
-    fun bypassSignInForTesting(email: String, token: String) {
-        Log.d("AuthManager", "Bypassing sign-in for testing: $email")
-        Dependencies.driveProvider.setTestToken(token)
     }
 
     suspend fun silentSignIn(email: String): String? {
@@ -119,16 +97,14 @@ class AuthManager(private val context: Context) {
             getAuthorizationClient().authorize(authRequest)
                 .addOnSuccessListener { result ->
                     if (result.hasResolution()) {
-                        Log.d("AuthManager", "Silent sign-in failed: resolution required for $email")
                         continuation.resume(null)
                     } else {
-                        Log.d("AuthManager", "Silent sign-in successful for $email")
-                        updateDriveService(result.accessToken, email)
+                        lastAccessToken = result.accessToken
                         continuation.resume(result.accessToken)
                     }
                 }
                 .addOnFailureListener { e ->
-                    Log.e("AuthManager", "Silent sign-in failed for $email", e)
+                    Log.e("AuthManager", "Silent sign-in failed", e)
                     continuation.resume(null)
                 }
         }

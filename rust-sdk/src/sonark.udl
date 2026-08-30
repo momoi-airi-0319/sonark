@@ -1,0 +1,59 @@
+namespace sonark_sdk {
+    string get_version();
+};
+
+dictionary Song {
+    string id;
+    string title;
+    string artist;
+    string album;
+    u64 duration_ms;
+    u64 size;
+    string data_url;
+    string? md5_hash;
+    string album_id;
+    string? cover_url;
+    boolean is_cue;
+    u32 disc_number;
+    u32 track_number;
+    u64 start_offset_ms;
+    string? local_path;
+    DownloadStatus download_status;
+};
+
+enum DownloadStatus {
+    "None",
+    "Pending",
+    "Downloading",
+    "Completed",
+    "Paused",
+    "Error"
+};
+
+dictionary DownloadProgress {
+    string song_id;
+    u64 downloaded_bytes;
+    u64 total_bytes;
+    DownloadStatus status;
+};
+
+callback interface SonarkObserver {
+    void on_download_progress(DownloadProgress progress);
+    void on_sync_complete(sequence<Song> songs);
+    void on_error(string message);
+};
+
+callback interface AuthProvider {
+    string get_access_token();
+};
+
+interface SonarkEngine {
+    constructor(string db_path);
+    void set_observer(SonarkObserver observer);
+    void set_auth_provider(AuthProvider auth_provider);
+    sequence<Song> get_all_songs();
+    sequence<Song> search(string query);
+    void sync_library();
+    void start_download(string song_id, string url, string destination);
+    Song? scan_local_metadata(string song_id, string path);
+};
