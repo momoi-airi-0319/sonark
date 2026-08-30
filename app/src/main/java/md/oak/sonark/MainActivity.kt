@@ -80,7 +80,7 @@ fun LoginScreen(onSignInClick: () -> Unit) {
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var authManager: AuthManager
+    private val authManager: AuthManager get() = Dependencies.authManager
     private val intentState = mutableStateOf<Intent?>(null)
 
     @androidx.media3.common.util.UnstableApi
@@ -89,7 +89,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         Dependencies.init(applicationContext)
-        authManager = AuthManager(this)
         intentState.value = intent
         
         setupCoil()
@@ -135,7 +134,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val performAuth = { email: String ->
-                    val authRequest = authManager.createAuthorizationRequest()
+                    val authRequest = authManager.createAuthorizationRequest(email)
                     authManager.getAuthorizationClient().authorize(authRequest)
                         .addOnSuccessListener { result ->
                             if (result.hasResolution()) {
@@ -327,6 +326,18 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                onLogTokenClick = { account ->
+                                    if (account.email == activeAccount?.email) {
+                                        coroutineScope.launch {
+                                            val headers = Dependencies.driveProvider.getAuthHeaders()
+                                            val token = headers["Authorization"]?.removePrefix("Bearer ")
+                                            Log.d("SonarkTest", "Token for ${account.email}: $token")
+                                            Toast.makeText(this@MainActivity, "Token logged to Logcat", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        Toast.makeText(this@MainActivity, "Please switch to this account first to get its token", Toast.LENGTH_LONG).show()
+                                    }
+                                },
                                 onUrlClick = { url ->
                                     val intent = Intent(Intent.ACTION_VIEW, url.toUri())
                                     this@MainActivity.startActivity(intent)
@@ -355,9 +366,8 @@ class MainActivity : ComponentActivity() {
                         val request = chain.request
                         val url = request.data.toString()
                         if (url.contains("googleapis.com") || url.contains("drive.google.com")) {
-                            val token = runCatching {
-                                Dependencies.driveProvider.credential?.token
-                            }.getOrNull()
+                            val headers = Dependencies.driveProvider.getAuthHeaders()
+                            val token = headers["Authorization"]?.removePrefix("Bearer ")
 
                             if (token != null) {
                                 val authenticatedRequest = request.newBuilder()

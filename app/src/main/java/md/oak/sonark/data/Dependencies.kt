@@ -1,6 +1,7 @@
 package md.oak.sonark.data
 
 import android.content.Context
+import md.oak.sonark.auth.AuthManager
 import md.oak.sonark.data.database.SonarkDatabase
 import md.oak.sonark.data.download.DownloadManager
 import md.oak.sonark.data.provider.DriveMusicProvider
@@ -15,11 +16,15 @@ object Dependencies {
     lateinit var accountRepository: AccountRepository
     lateinit var downloadManager: DownloadManager
     lateinit var metadataManager: MetadataManager
+    lateinit var authManager: AuthManager
     val driveProvider = DriveMusicProvider()
 
     fun init(context: Context) {
         if (!::settingsRepository.isInitialized) {
             settingsRepository = SettingsRepository(context.applicationContext)
+        }
+        if (!::authManager.isInitialized) {
+            authManager = AuthManager(context.applicationContext)
         }
         SessionManager.init(context.applicationContext, settingsRepository)
 

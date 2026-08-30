@@ -40,7 +40,12 @@ sealed class AlbumDownloadItem {
         override fun DetailContent(modifier: Modifier) {
             Column(modifier = modifier) {
                 downloadingSongs.forEach { syncSong ->
-                    SongProgressItem("${syncSong.song.trackNumber}. ${syncSong.song.title}", syncSong.size, syncSong.downloadProgress)
+                    SongProgressItem(
+                        title = "${syncSong.song.trackNumber}. ${syncSong.song.title}",
+                        size = syncSong.size,
+                        downloadedBytes = syncSong.downloadedBytes,
+                        progress = syncSong.downloadProgress
+                    )
                 }
                 SummaryInfo()
             }
@@ -65,7 +70,7 @@ sealed class AlbumDownloadItem {
                 if (downloadingSongs.isNotEmpty()) {
                     // CUE only shows one progress for the whole disc file
                     val first = downloadingSongs.first()
-                    SongProgressItem("Disc Audio File", first.size, first.downloadProgress)
+                    SongProgressItem("Disc Audio File", first.size, first.downloadedBytes, first.downloadProgress)
                 }
                 SummaryInfo()
             }
@@ -93,7 +98,7 @@ sealed class AlbumDownloadItem {
     }
 
     @Composable
-    protected fun SongProgressItem(title: String, size: Long, progress: Int) {
+    protected fun SongProgressItem(title: String, size: Long, downloadedBytes: Long, progress: Int) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -113,7 +118,7 @@ sealed class AlbumDownloadItem {
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = Utils.formatSize(size),
+                        text = "${Utils.formatSize(downloadedBytes)} / ${Utils.formatSize(size)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 8.dp)

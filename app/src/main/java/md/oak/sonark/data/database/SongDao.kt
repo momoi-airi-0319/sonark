@@ -18,6 +18,9 @@ interface SongDao {
     @Query("SELECT * FROM songs WHERE id = :id")
     suspend fun getSongById(id: String): SongEntity?
 
+    @Query("SELECT * FROM songs WHERE downloadStatus IN ('PENDING', 'DOWNLOADING', 'ERROR')")
+    fun getSongsToDownloadFlow(): Flow<List<SongEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSongs(songs: List<SongEntity>)
 
@@ -27,16 +30,13 @@ interface SongDao {
     @Query("DELETE FROM songs WHERE id NOT IN (:ids)")
     suspend fun deleteSongsNotIn(ids: List<String>)
 
-    @Query("SELECT * FROM songs WHERE downloadStatus IN ('PENDING', 'ERROR')")
-    fun getSongsToDownloadFlow(): Flow<List<SongEntity>>
-
     @Query("UPDATE songs SET downloadStatus = 'PENDING' WHERE downloadStatus = 'DOWNLOADING'")
     suspend fun resetAllDownloadingStatus()
 
-    @Query("UPDATE songs SET downloadStatus = :status, downloadProgress = :progress WHERE data = :dataUrl")
-    suspend fun updateDownloadStatusByUrl(dataUrl: String, status: DownloadStatus, progress: Int)
+    @Query("UPDATE songs SET downloadStatus = :status, downloadProgress = :progress, downloadedBytes = :downloadedBytes WHERE data = :dataUrl")
+    suspend fun updateDownloadStatusByUrl(dataUrl: String, status: DownloadStatus, progress: Int, downloadedBytes: Long)
 
-    @Query("UPDATE songs SET localPath = :path, downloadStatus = 'COMPLETED', downloadProgress = 100 WHERE data = :dataUrl")
+    @Query("UPDATE songs SET localPath = :path, downloadStatus = 'COMPLETED', downloadProgress = 100, downloadedBytes = size WHERE data = :dataUrl")
     suspend fun markUrlAsDownloaded(dataUrl: String, path: String)
 
     @Query("SELECT downloadStatus FROM songs WHERE data = :dataUrl")

@@ -13,6 +13,7 @@ data class AlbumEntity(
     val localPath: String? = null,
     val downloadStatus: md.oak.sonark.data.model.DownloadStatus = md.oak.sonark.data.model.DownloadStatus.NONE,
     val downloadProgress: Int = 0,
+    val downloadedBytes: Long = 0,
     val size: Long = 0,
     val md5Hash: String? = null,
     val type: AlbumType

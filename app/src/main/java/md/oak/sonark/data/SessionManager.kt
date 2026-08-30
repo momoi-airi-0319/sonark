@@ -18,8 +18,12 @@ object SessionManager {
     val currentSession = _currentSession.asStateFlow()
     
     private val pendingCleanups = mutableMapOf<String, Job>()
+    private var isInitialized = false
 
     fun init(context: Context, settingsRepository: SettingsRepository) {
+        if (isInitialized) return
+        isInitialized = true
+        
         scope.launch {
             settingsRepository.googleAccountName.collectLatest { email ->
                 switchSessionInternal(context, email)

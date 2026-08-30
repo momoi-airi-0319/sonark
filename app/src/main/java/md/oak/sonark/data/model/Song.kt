@@ -44,5 +44,6 @@ data class SyncSong(
     val coverSize: Long = 0,
     val coverMd5: String? = null,
     val downloadStatus: DownloadStatus = DownloadStatus.NONE,
-    val downloadProgress: Int = 0
+    val downloadProgress: Int = 0,
+    val downloadedBytes: Long = 0
 )

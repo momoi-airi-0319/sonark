@@ -201,7 +201,7 @@ class MainViewModel(
     fun refreshAccountInfo() {
         viewModelScope.launch {
             val provider = repository.getProvider("google_drive") as? md.oak.sonark.data.provider.DriveMusicProvider
-            val driveService = provider?.let { createDriveService(it) }
+            val driveService = provider?.getServiceSnapshot()
             try {
                 accountRepository.refreshQuota(driveService)
                 updateActiveAccountError(false)
@@ -209,18 +209,6 @@ class MainViewModel(
                 updateActiveAccountError(true)
             }
         }
-    }
-
-    private fun createDriveService(provider: md.oak.sonark.data.provider.DriveMusicProvider): com.google.api.services.drive.Drive? {
-        return try {
-            provider.credential?.let { cred ->
-                com.google.api.services.drive.Drive.Builder(
-                    com.google.api.client.http.javanet.NetHttpTransport(),
-                    com.google.api.client.json.gson.GsonFactory.getDefaultInstance(),
-                    cred
-                ).setApplicationName("Sonark").build()
-            }
-        } catch (_: Exception) { null }
     }
 
     fun setUnauthenticated() {

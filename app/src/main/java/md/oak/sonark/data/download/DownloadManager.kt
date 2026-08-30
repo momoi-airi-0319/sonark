@@ -4,8 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.flow.combine
 import md.oak.sonark.data.AccountSession
 import md.oak.sonark.data.SessionManager
 import md.oak.sonark.data.Utils
@@ -25,7 +24,6 @@ class DownloadManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var observationJob: Job? = null
     
-    private val downloadSemaphore = Semaphore(6) 
     private val activeDownloadJobs = Collections.synchronizedMap(mutableMapOf<String, Job>())
 
     fun start() {
@@ -37,9 +35,6 @@ class DownloadManager(
                 if (session == null) return@collectLatest
                 
                 try {
-                    session.songDao.resetAllDownloadingStatus()
-                    session.albumDao.resetAllDownloadingStatus()
-                    
                     manageDownloads(session)
                 } catch (e: CancellationException) {
                     Log.d("DownloadManager", "Session observation cancelled for ${session.email}")
@@ -51,59 +46,73 @@ class DownloadManager(
     }
 
     private suspend fun manageDownloads(session: AccountSession) = coroutineScope {
-        // Track download observation
-        launch {
-            session.songDao.getAllSongsFlow().collect { allSongs ->
-                val targetTracks = allSongs.filter { 
-                    it.downloadStatus == DownloadStatus.PENDING || it.downloadStatus == DownloadStatus.ERROR 
-                }
-                val targetUrls = targetTracks.map { it.data }.toSet()
+        combine(
+            session.songDao.getSongsToDownloadFlow(),
+            session.albumDao.getAlbumsToDownloadFlow()
+        ) { songs, albums ->
+            val songTasks = songs.map { 
+                DownloadTask(
+                    id = it.data,
+                    url = it.data,
+                    size = it.size,
+                    downloadedBytes = it.downloadedBytes,
+                    status = it.downloadStatus,
+                    isCover = false,
+                    entity = it
+                )
+            }
+            val albumTasks = albums.map {
+                DownloadTask(
+                    id = "cover_${it.imageUrl}",
+                    url = it.imageUrl ?: "",
+                    size = it.size,
+                    downloadedBytes = it.downloadedBytes,
+                    status = it.downloadStatus,
+                    isCover = true,
+                    entity = it
+                )
+            }
+            (songTasks + albumTasks)
+                .filter { it.url.isNotEmpty() }
+                .sortedBy { it.remainingBytes }
+        }.collect { allTasks ->
+            val topTasks = allTasks.take(6)
+            val topTaskIds = topTasks.map { it.id }.toSet()
 
-                // 1. Cancel jobs for tracks that were paused or completed
-                val jobsToCancel = synchronized(activeDownloadJobs) {
-                    activeDownloadJobs.keys.filter { it !in targetUrls && !it.startsWith("cover_") }
-                }
-                jobsToCancel.forEach { url ->
-                    activeDownloadJobs.remove(url)?.cancel()
-                    Log.d("DownloadManager", "Stop job for track: $url")
-                }
+            // 1. Cancel jobs for tasks no longer in top 6
+            val jobsToCancel = synchronized(activeDownloadJobs) {
+                activeDownloadJobs.keys.filter { it !in topTaskIds }
+            }
+            jobsToCancel.forEach { id ->
+                activeDownloadJobs.remove(id)?.cancel()
+                Log.d("DownloadManager", "Preempted or finished task: $id")
+            }
 
-                // 2. Start jobs for pending tracks
-                targetTracks.forEach { entity ->
-                    if (!activeDownloadJobs.containsKey(entity.data)) {
-                        processDownload(entity.data, session) {
-                            downloadSong(entity, session)
+            // 2. Start jobs for new top tasks
+            topTasks.forEach { task ->
+                if (!activeDownloadJobs.containsKey(task.id)) {
+                    processDownload(task.id, session) {
+                        if (task.isCover) {
+                            downloadAlbumCover(task.entity as AlbumEntity, session)
+                        } else {
+                            downloadSong(task.entity as SongEntity, session)
                         }
                     }
                 }
             }
         }
+    }
 
-        // Album cover observation
-        launch {
-            session.albumDao.getAlbumsToDownloadFlow().collect { albums ->
-                val targetUrls = albums.mapNotNull { it.imageUrl }.toSet()
-                
-                // 1. Cancel jobs for covers no longer needed
-                val jobsToCancel = synchronized(activeDownloadJobs) {
-                    activeDownloadJobs.keys.filter { it.startsWith("cover_") && it.removePrefix("cover_") !in targetUrls }
-                }
-                jobsToCancel.forEach { key ->
-                    activeDownloadJobs.remove(key)?.cancel()
-                }
-
-                // 2. Start jobs for pending covers
-                albums.forEach { entity ->
-                    val url = entity.imageUrl ?: return@forEach
-                    val key = "cover_$url"
-                    if (!activeDownloadJobs.containsKey(key)) {
-                        processDownload(key, session) {
-                            downloadAlbumCover(entity, session)
-                        }
-                    }
-                }
-            }
-        }
+    private data class DownloadTask(
+        val id: String,
+        val url: String,
+        val size: Long,
+        val downloadedBytes: Long,
+        val status: DownloadStatus,
+        val isCover: Boolean,
+        val entity: Any
+    ) {
+        val remainingBytes: Long get() = if (size > 0) size - downloadedBytes else Long.MAX_VALUE
     }
     
     fun cancelActiveJobs() {
@@ -139,29 +148,27 @@ class DownloadManager(
             return
         }
 
-        downloadSemaphore.withPermit {
-            // Check status again inside semaphore to avoid race with user pause
-            val currentStatus = session.songDao.getSongStatusByUrl(entity.data)
-            if (currentStatus != DownloadStatus.PENDING && currentStatus != DownloadStatus.ERROR) {
-                return@withPermit
-            }
+        // Check status again to avoid race with user pause
+        val currentStatus = session.songDao.getSongStatusByUrl(entity.data)
+        if (currentStatus == DownloadStatus.NONE || currentStatus == DownloadStatus.PAUSED || currentStatus == DownloadStatus.COMPLETED) {
+            return
+        }
 
-            Log.d("DownloadManager", "Starting download: ${entity.title}")
-            session.songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.DOWNLOADING, 0)
-            
-            try {
-                val syncSong = entity.toSyncSong(albumTitle = "Album", imageUrl = null, type = AlbumType.NORMAL)
-                performValidatedDownload(syncSong, targetFile, entity.md5Hash, session.scope) { progress ->
-                    session.songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.DOWNLOADING, progress)
-                }
-                markSongDownloaded(entity, targetFile, session)
-            } catch (e: CancellationException) {
-                // Do not set status back to PENDING if cancelled (likely by user or session change)
-                throw e
-            } catch (e: Exception) {
-                session.songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.ERROR, 0)
-                throw e
+        Log.d("DownloadManager", "Starting download: ${entity.title}")
+        // Maintain existing progress/bytes if any
+        session.songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.DOWNLOADING, entity.downloadProgress, entity.downloadedBytes)
+        
+        try {
+            val syncSong = entity.toSyncSong(albumTitle = "Album", imageUrl = null, type = AlbumType.NORMAL)
+            performValidatedDownload(syncSong, targetFile, entity.md5Hash, session.scope) { progress, downloadedBytes ->
+                session.songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.DOWNLOADING, progress, downloadedBytes)
             }
+            markSongDownloaded(entity, targetFile, session)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            session.songDao.updateDownloadStatusByUrl(entity.data, DownloadStatus.ERROR, 0, 0)
+            throw e
         }
     }
 
@@ -179,40 +186,41 @@ class DownloadManager(
             return
         }
 
-        downloadSemaphore.withPermit {
-            if (isAlreadyDownloaded(targetFile, entity.md5Hash)) {
-                session.albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
-                return@withPermit
+        if (isAlreadyDownloaded(targetFile, entity.md5Hash)) {
+            session.albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
+            return
+        }
+
+        session.albumDao.updateDownloadStatusByUrl(url, DownloadStatus.DOWNLOADING, entity.downloadProgress, entity.downloadedBytes)
+
+        val syncSong = md.oak.sonark.data.model.SyncSong(
+            song = md.oak.sonark.data.model.Song(
+                id = "cover_${entity.id}",
+                title = "Cover",
+                artist = entity.artist,
+                album = entity.title,
+                duration = 0
+            ),
+            data = url,
+            albumId = entity.id,
+            size = entity.size,
+            md5Hash = entity.md5Hash,
+            providerId = "google_drive",
+            downloadStatus = entity.downloadStatus,
+            downloadProgress = entity.downloadProgress,
+            downloadedBytes = entity.downloadedBytes
+        )
+
+        try {
+            performValidatedDownload(syncSong, targetFile, entity.md5Hash, session.scope) { progress, downloadedBytes ->
+                session.albumDao.updateDownloadStatusByUrl(url, DownloadStatus.DOWNLOADING, progress, downloadedBytes)
             }
-
-            session.albumDao.updateDownloadStatusByUrl(url, DownloadStatus.DOWNLOADING, 0)
-
-            val syncSong = md.oak.sonark.data.model.SyncSong(
-                song = md.oak.sonark.data.model.Song(
-                    id = "cover_${entity.id}",
-                    title = "Cover",
-                    artist = entity.artist,
-                    album = entity.title,
-                    duration = 0
-                ),
-                data = url,
-                albumId = entity.id,
-                size = entity.size,
-                md5Hash = entity.md5Hash,
-                providerId = "google_drive"
-            )
-
-            try {
-                performValidatedDownload(syncSong, targetFile, entity.md5Hash, session.scope) { progress ->
-                    session.albumDao.updateDownloadStatusByUrl(url, DownloadStatus.DOWNLOADING, progress)
-                }
-                session.albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                session.albumDao.updateDownloadStatusByUrl(url, DownloadStatus.ERROR, 0)
-                throw e
-            }
+            session.albumDao.markUrlAsDownloaded(url, targetFile.absolutePath)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            session.albumDao.updateDownloadStatusByUrl(url, DownloadStatus.ERROR, 0, 0)
+            throw e
         }
     }
 
@@ -228,7 +236,7 @@ class DownloadManager(
         targetFile: File,
         expectedHash: String?,
         sessionScope: CoroutineScope,
-        onProgressUpdate: suspend (Int) -> Unit
+        onProgressUpdate: suspend (Int, Long) -> Unit
     ) {
         val provider = repository.getProvider(syncSong.providerId) 
             ?: throw IllegalStateException("Provider ${syncSong.providerId} not found")
@@ -238,7 +246,7 @@ class DownloadManager(
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastProgressUpdate > 500) {
                 val progress = if (total > 0) (downloaded * 100 / total).toInt() else 0
-                sessionScope.launch { onProgressUpdate(progress) }
+                sessionScope.launch { onProgressUpdate(progress, downloaded) }
                 lastProgressUpdate = currentTime
             }
         }

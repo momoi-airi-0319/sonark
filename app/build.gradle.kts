@@ -31,6 +31,12 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
+        for (entry in project.properties.entries) {
+            if (entry.key.startsWith("test.")) {
+                testInstrumentationRunnerArguments[entry.key.removePrefix("test.")] = entry.value.toString()
+            }
+        }
+        
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$webClientId\"")
     }
 

@@ -1,6 +1,7 @@
 package md.oak.sonark.ui.screens.library
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -13,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +40,7 @@ fun AccountPopDialog(
     onAddAccountClick: () -> Unit,
     onSignOutAllClick: () -> Unit,
     onAccountClick: (UserAccount) -> Unit,
+    onLogTokenClick: (UserAccount) -> Unit,
     onUrlClick: (String) -> Unit,
     onDismissRequest: () -> Unit
 ) {
@@ -59,6 +62,7 @@ fun AccountPopDialog(
             onAddAccountClick = onAddAccountClick,
             onSignOutAllClick = onSignOutAllClick,
             onAccountClick = onAccountClick,
+            onLogTokenClick = onLogTokenClick,
             onUrlClick = onUrlClick,
             onCloseClick = onDismissRequest
         )
@@ -81,6 +85,7 @@ private fun AccountDialogContent(
     onAddAccountClick: () -> Unit,
     onSignOutAllClick: () -> Unit,
     onAccountClick: (UserAccount) -> Unit,
+    onLogTokenClick: (UserAccount) -> Unit,
     onUrlClick: (String) -> Unit,
     onCloseClick: () -> Unit
 ) {
@@ -130,12 +135,19 @@ private fun AccountDialogContent(
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
                     // The active account at the top (larger avatar with blue ring and edit icon)
                     if (activeAccount != null) {
-                        ActiveAccountItem(account = activeAccount)
+                        ActiveAccountItem(
+                            account = activeAccount,
+                            onLogTokenClick = { onLogTokenClick(activeAccount) }
+                        )
                     }
 
                     // A list of other accounts
                     otherAccounts.forEach { account ->
-                        AccountItem(account = account, onClick = { onAccountClick(account) })
+                        AccountItem(
+                            account = account,
+                            onClick = { onAccountClick(account) },
+                            onLogTokenClick = { onLogTokenClick(account) }
+                        )
                     }
 
                     // "Add another account" button
@@ -220,8 +232,12 @@ private fun AccountDialogContent(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ActiveAccountItem(account: UserAccount) {
+private fun ActiveAccountItem(
+    account: UserAccount,
+    onLogTokenClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -232,7 +248,11 @@ private fun ActiveAccountItem(account: UserAccount) {
             user = account,
             size = 48.dp,
             isSelected = true,
-            showEditIcon = false
+            showEditIcon = false,
+            modifier = Modifier.combinedClickable(
+                onClick = {},
+                onLongClick = onLogTokenClick
+            )
         )
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -254,8 +274,13 @@ private fun ActiveAccountItem(account: UserAccount) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun AccountItem(account: UserAccount, onClick: () -> Unit) {
+private fun AccountItem(
+    account: UserAccount,
+    onClick: () -> Unit,
+    onLogTokenClick: () -> Unit
+) {
     val alpha = if (account.isLoggedIn) 1f else 0.5f
     
     Row(
@@ -266,7 +291,14 @@ private fun AccountItem(account: UserAccount, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.alpha(alpha)) {
-            UserAvatar(user = account, size = 32.dp)
+            UserAvatar(
+                user = account, 
+                size = 32.dp,
+                modifier = Modifier.combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLogTokenClick
+                )
+            )
         }
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f).alpha(alpha)) {
@@ -289,6 +321,7 @@ private fun AccountItem(account: UserAccount, onClick: () -> Unit) {
                 modifier = Modifier.padding(start = 8.dp).size(20.dp)
             )
         }
+
         if (!account.isLoggedIn) {
             Text(
                 text = "Signed out",

@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 
 @Database(
     entities = [SongEntity::class, AlbumEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

@@ -34,7 +34,8 @@ data class SongEntity(
     val size: Long = 0,
     val md5Hash: String? = null,
     val downloadStatus: DownloadStatus = DownloadStatus.NONE,
-    val downloadProgress: Int = 0
+    val downloadProgress: Int = 0,
+    val downloadedBytes: Long = 0
 ) {
     fun toSong(albumTitle: String, imageUrl: String?, type: AlbumType) = Song(
         id = id,
@@ -58,7 +59,8 @@ data class SongEntity(
         localPath = localPath,
         startOffset = startOffset,
         downloadStatus = downloadStatus,
-        downloadProgress = downloadProgress
+        downloadProgress = downloadProgress,
+        downloadedBytes = downloadedBytes
     )
 
     companion object {
@@ -77,7 +79,8 @@ data class SongEntity(
             size = syncSong.size,
             md5Hash = syncSong.md5Hash,
             downloadStatus = syncSong.downloadStatus,
-            downloadProgress = syncSong.downloadProgress
+            downloadProgress = syncSong.downloadProgress,
+            downloadedBytes = syncSong.downloadedBytes
         )
     }
 }

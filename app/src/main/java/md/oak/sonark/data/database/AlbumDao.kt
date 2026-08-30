@@ -21,16 +21,16 @@ interface AlbumDao {
     @Query("SELECT * FROM albums WHERE id = :id")
     suspend fun getAlbumById(id: String): AlbumEntity?
 
-    @Query("SELECT * FROM albums WHERE downloadStatus IN ('PENDING', 'ERROR')")
+    @Query("SELECT * FROM albums WHERE downloadStatus IN ('PENDING', 'DOWNLOADING', 'ERROR')")
     fun getAlbumsToDownloadFlow(): Flow<List<AlbumEntity>>
 
     @Query("UPDATE albums SET downloadStatus = 'PENDING' WHERE downloadStatus = 'DOWNLOADING'")
     suspend fun resetAllDownloadingStatus()
 
-    @Query("UPDATE albums SET downloadStatus = :status, downloadProgress = :progress WHERE imageUrl = :url")
-    suspend fun updateDownloadStatusByUrl(url: String, status: md.oak.sonark.data.model.DownloadStatus, progress: Int)
+    @Query("UPDATE albums SET downloadStatus = :status, downloadProgress = :progress, downloadedBytes = :downloadedBytes WHERE imageUrl = :url")
+    suspend fun updateDownloadStatusByUrl(url: String, status: md.oak.sonark.data.model.DownloadStatus, progress: Int, downloadedBytes: Long)
 
-    @Query("UPDATE albums SET localPath = :path, downloadStatus = 'COMPLETED', downloadProgress = 100 WHERE imageUrl = :url")
+    @Query("UPDATE albums SET localPath = :path, downloadStatus = 'COMPLETED', downloadProgress = 100, downloadedBytes = size WHERE imageUrl = :url")
     suspend fun markUrlAsDownloaded(url: String, path: String)
 
     @Query("DELETE FROM albums WHERE id NOT IN (:ids)")

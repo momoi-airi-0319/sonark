@@ -1,10 +1,12 @@
 package md.oak.sonark.data.repository
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 import md.oak.sonark.data.AccountSession
+import md.oak.sonark.data.Dependencies
 import md.oak.sonark.data.SessionManager
 import md.oak.sonark.data.database.AlbumEntity
 import md.oak.sonark.data.database.SongEntity
@@ -78,13 +80,39 @@ class MusicRepository(
     }
 
     suspend fun syncAll() {
-        val session = sessionManager.currentSession.value ?: return
+        val session = sessionManager.currentSession.value ?: run {
+            Log.w("MusicRepository", "syncAll skipped: No active session")
+            return
+        }
         withContext(session.scope.coroutineContext + Dispatchers.IO) {
             val songDao = session.songDao
             val albumDao = session.albumDao
 
-            val allSyncSongs = providers.values.flatMap { it.syncLibrary() }
-            if (allSyncSongs.isEmpty()) return@withContext
+            Log.d("MusicRepository", "Starting sync for session: ${session.email}")
+            var allSyncSongs: List<SyncSong> = emptyList()
+            
+            try {
+                allSyncSongs = providers.values.flatMap { it.syncLibrary() }
+            } catch (e: com.google.api.client.googleapis.json.GoogleJsonResponseException) {
+                if (e.statusCode == 401) {
+                    Log.d("MusicRepository", "Sync failed with 401, attempting silent re-auth...")
+                    val newToken = Dependencies.authManager.silentSignIn(session.email)
+                    if (newToken != null) {
+                        Log.d("MusicRepository", "Silent re-auth successful, retrying sync...")
+                        allSyncSongs = providers.values.flatMap { it.syncLibrary() }
+                    } else {
+                        Log.e("MusicRepository", "Silent re-auth failed, cannot retry sync")
+                        throw e
+                    }
+                } else {
+                    throw e
+                }
+            }
+
+            if (allSyncSongs.isEmpty()) {
+                Log.d("MusicRepository", "No songs found across providers")
+                return@withContext
+            }
 
             val existingAlbums = albumDao.getAllAlbums().associateBy { it.id }
             val albums = allSyncSongs.groupBy { it.albumId }.map { (albumId, syncSongs) ->
@@ -130,9 +158,10 @@ class MusicRepository(
                 isFullyDownloaded -> DownloadStatus.COMPLETED
                 isDownloading -> DownloadStatus.DOWNLOADING
                 firstSyncSong.coverData == null -> DownloadStatus.NONE
-                else -> DownloadStatus.PENDING
+                else -> existing?.downloadStatus ?: DownloadStatus.PENDING
             },
-            downloadProgress = if (isDownloading) existing.downloadProgress else 0,
+            downloadProgress = if (isDownloading) existing.downloadProgress else (existing?.downloadProgress ?: 0),
+            downloadedBytes = if (isDownloading) existing.downloadedBytes else (existing?.downloadedBytes ?: 0),
             size = firstSyncSong.coverSize,
             md5Hash = firstSyncSong.coverMd5,
             type = if (syncSongs.any { it.song.type == AlbumType.CUE }) AlbumType.CUE else AlbumType.NORMAL
@@ -161,10 +190,11 @@ class MusicRepository(
             downloadStatus = when {
                 isFullyDownloaded -> DownloadStatus.COMPLETED
                 isDownloading -> DownloadStatus.DOWNLOADING
-                else -> DownloadStatus.PENDING
+                else -> existing?.downloadStatus ?: DownloadStatus.PENDING
             },
             localPath = existing?.localPath,
-            downloadProgress = if (isDownloading) existing.downloadProgress else 0
+            downloadProgress = if (isDownloading) existing.downloadProgress else (existing?.downloadProgress ?: 0),
+            downloadedBytes = if (isDownloading) existing.downloadedBytes else (existing?.downloadedBytes ?: 0)
         )
         return SongEntity.fromSyncSong(finalSyncSong)
     }

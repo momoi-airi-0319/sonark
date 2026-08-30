@@ -4,6 +4,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.net.toUri
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
@@ -49,36 +50,80 @@ class DriveMusicProvider : MusicProvider {
         .build()
 
     private var driveService: Drive? = null
+    private var activeAccessToken: String? = null
+    
     var credential: GoogleAccountCredential? = null
         set(value) {
             field = value
             updateService()
         }
 
+    fun updateAccessToken(token: String?) {
+        this.activeAccessToken = token
+        updateService()
+    }
+
+    /**
+     * For testing purposes, allows setting a manual token that bypasses Google Play Services.
+     */
+    fun setTestToken(token: String?) {
+        this.activeAccessToken = token
+        updateService()
+    }
+
     private fun updateService() {
-        driveService = credential?.let { cred ->
+        driveService = getServiceSnapshot()
+    }
+
+    fun getServiceSnapshot(): Drive? {
+        val initializer = activeAccessToken?.let { token ->
+            com.google.api.client.http.HttpRequestInitializer { request ->
+                request.headers.authorization = "Bearer $token"
+            }
+        } ?: credential
+
+        return initializer?.let { init ->
             Drive.Builder(
                 NetHttpTransport(),
                 GsonFactory.getDefaultInstance(),
-                cred
+                init
             ).setApplicationName("Sonark").build()
         }
     }
 
     override suspend fun syncLibrary(): List<SyncSong> = withContext(Dispatchers.IO) {
-        val service = driveService ?: return@withContext emptyList()
+        Log.d(TAG, "Starting library sync...")
+        
+        // Snapshot the current service to avoid race conditions during sync
+        val service = getServiceSnapshot() ?: run {
+            Log.e(TAG, "Sync failed: no valid credentials")
+            return@withContext emptyList()
+        }
+        
         val songs = mutableListOf<SyncSong>()
 
         try {
-            val vaultFolder = findFolder(service, "Vault", "root") ?: return@withContext emptyList()
+            val vaultFolder = findFolder(service, "Vault", "root") ?: run {
+                Log.e(TAG, "Sync failed: 'Vault' folder not found in root")
+                return@withContext emptyList()
+            }
+            Log.d(TAG, "Found Vault folder: ${vaultFolder.id}")
             val albumFolders = listFolders(service, vaultFolder.id)
+            Log.d(TAG, "Found ${albumFolders.size} album folders")
 
             for (albumFolder in albumFolders) {
                 processAlbumFolder(service, albumFolder, songs)
             }
+        } catch (e: GoogleJsonResponseException) {
+            if (e.statusCode == 401) {
+                Log.e(TAG, "Unauthorized: Token expired, re-throwing for retry", e)
+                throw e
+            }
+            Log.e(TAG, "Sync failed with HTTP ${e.statusCode}", e)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync library", e)
         }
+        Log.d(TAG, "Sync complete. Found ${songs.size} songs.")
         songs
     }
 
@@ -220,7 +265,7 @@ class DriveMusicProvider : MusicProvider {
     }
 
     override fun getAuthHeaders(): Map<String, String> {
-        val token = try {
+        val token = activeAccessToken ?: try {
             credential?.token
         } catch (e: Exception) {
             Log.w(TAG, "Failed to get token", e)
