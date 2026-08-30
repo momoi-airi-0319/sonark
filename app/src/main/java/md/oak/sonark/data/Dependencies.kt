@@ -2,22 +2,18 @@ package md.oak.sonark.data
 
 import android.content.Context
 import md.oak.sonark.auth.AuthManager
-import md.oak.sonark.data.database.SonarkDatabase
-import md.oak.sonark.data.download.DownloadManager
-import md.oak.sonark.data.provider.DriveMusicProvider
 import md.oak.sonark.data.repository.AccountRepository
-import md.oak.sonark.data.repository.MetadataManager
 import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.data.repository.SettingsRepository
+import uniffi.sonark_sdk.SonarkEngine
+import uniffi.sonark_sdk.AuthProvider
 
 object Dependencies {
     lateinit var musicRepository: MusicRepository
     lateinit var settingsRepository: SettingsRepository
     lateinit var accountRepository: AccountRepository
-    lateinit var downloadManager: DownloadManager
-    lateinit var metadataManager: MetadataManager
     lateinit var authManager: AuthManager
-    val driveProvider = DriveMusicProvider()
+    lateinit var sonarkEngine: SonarkEngine
 
     fun init(context: Context) {
         if (!::settingsRepository.isInitialized) {
@@ -26,29 +22,28 @@ object Dependencies {
         if (!::authManager.isInitialized) {
             authManager = AuthManager(context.applicationContext)
         }
-        SessionManager.init(context.applicationContext, settingsRepository)
+        
+        if (!::sonarkEngine.isInitialized) {
+            val dbFile = context.getDatabasePath("sonark_v2.db")
+            dbFile.parentFile?.mkdirs()
+            sonarkEngine = SonarkEngine(dbFile.absolutePath)
+            
+            // Bridge Auth to Rust
+            sonarkEngine.setAuthProvider(object : AuthProvider {
+                override fun getAccessToken(): String {
+                    // Rust Engine will call this when it needs a token for Google Drive API.
+                    // We return the last known valid token from our AuthManager.
+                    return authManager.getLastKnownToken() ?: ""
+                }
+            })
+        }
 
         if (!::accountRepository.isInitialized) {
             accountRepository = AccountRepository(settingsRepository)
         }
-        if (!::metadataManager.isInitialized) {
-            metadataManager = MetadataManager(context.applicationContext, SessionManager)
-        }
+        
         if (!::musicRepository.isInitialized) {
-            musicRepository = MusicRepository(
-                context.applicationContext,
-                SessionManager,
-                settingsRepository,
-                metadataManager
-            ).apply {
-                registerProvider(driveProvider)
-            }
-        }
-        if (!::downloadManager.isInitialized) {
-            downloadManager = DownloadManager(
-                SessionManager,
-                musicRepository
-            ).apply { start() }
+            musicRepository = MusicRepository(sonarkEngine)
         }
     }
 }

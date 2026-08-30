@@ -1,9 +1,7 @@
 package md.oak.sonark.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -31,16 +29,11 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val accounts by viewModel.storedAccounts.collectAsStateWithLifecycle()
-    val storageUsage by viewModel.accountStorageUsage.collectAsStateWithLifecycle()
-
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        viewModel.refreshStorageUsage()
-    }
     
     SettingsContent(
         accounts = accounts,
-        storageUsage = storageUsage,
-        onClearCache = { viewModel.clearCache(it) },
+        storageUsage = emptyMap(),
+        onClearCache = { /* TODO */ },
         onBackClick = onBackClick,
         modifier = modifier
     )
@@ -98,12 +91,12 @@ fun SettingsContent(
             SettingsSection(title = "About") {
                 SettingsInfoItem(
                     title = "App Version",
-                    subtitle = "1.0.0 (Sonark Beta)",
+                    subtitle = "1.1.0 (Rust Core)",
                     icon = Icons.Rounded.Info
                 )
                 SettingsInfoItem(
                     title = "About Sonark",
-                    subtitle = "A modern music player for Android, built with Jetpack Compose.",
+                    subtitle = "A modern music player powered by a high-performance Rust SDK.",
                     icon = Icons.AutoMirrored.Rounded.HelpOutline
                 )
             }

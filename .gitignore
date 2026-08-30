@@ -1,11 +1,32 @@
 *.iml
 .gradle
-/local.properties
-/.idea
+local.properties
+.idea/
 .DS_Store
-/build
-/captures
+build/
+captures
 .externalNativeBuild
 .cxx
-local.properties
 .kotlin
+
+# Rust
+rust-sdk/target/
+rust-sdk/generated/
+rust-sdk/generated_jni/
+rust-sdk/Cargo.lock
+
+# UniFFI generated Kotlin bindings
+**/uniffi/**
+
+# Native Libraries
+**/*.so
+**/*.a
+**/*.dylib
+**/*.dll
+
+# Agent artifacts
+.artifacts/
+.agent/
+**/task.artifact.md
+**/walkthrough.artifact.md
+**/implementation_plan.artifact.md

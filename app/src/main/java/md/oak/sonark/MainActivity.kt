@@ -329,8 +329,7 @@ class MainActivity : ComponentActivity() {
                                 onLogTokenClick = { account ->
                                     if (account.email == activeAccount?.email) {
                                         coroutineScope.launch {
-                                            val headers = Dependencies.driveProvider.getAuthHeaders()
-                                            val token = headers["Authorization"]?.removePrefix("Bearer ")
+                                            val token = authManager.getLastKnownToken()
                                             Log.d("SonarkTest", "Token for ${account.email}: $token")
                                             Toast.makeText(this@MainActivity, "Token logged to Logcat", Toast.LENGTH_SHORT).show()
                                         }
@@ -366,8 +365,7 @@ class MainActivity : ComponentActivity() {
                         val request = chain.request
                         val url = request.data.toString()
                         if (url.contains("googleapis.com") || url.contains("drive.google.com")) {
-                            val headers = Dependencies.driveProvider.getAuthHeaders()
-                            val token = headers["Authorization"]?.removePrefix("Bearer ")
+                            val token = authManager.getLastKnownToken()
 
                             if (token != null) {
                                 val authenticatedRequest = request.newBuilder()

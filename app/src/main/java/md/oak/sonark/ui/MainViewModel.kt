@@ -91,10 +91,9 @@ class MainViewModel(
             val allArtistSongs = normalizedGroup.map { it.second }
             Artist(
                 name = bestName,
-                // albumCount only counts where this artist (normalized) is the Album Artist
                 albumCount = allAlbums.count { ArtistUtils.normalize(it.artist) == normalizedTarget },
                 songCount = allArtistSongs.size,
-                imageUrl = null // Give up on automatically setting artist avatar
+                imageUrl = null
             )
         }
         .sortedBy { it.name.lowercase() }
@@ -200,10 +199,8 @@ class MainViewModel(
 
     fun refreshAccountInfo() {
         viewModelScope.launch {
-            val provider = repository.getProvider("google_drive") as? md.oak.sonark.data.provider.DriveMusicProvider
-            val driveService = provider?.getServiceSnapshot()
             try {
-                accountRepository.refreshQuota(driveService)
+                accountRepository.refreshQuota()
                 updateActiveAccountError(false)
             } catch (e: Exception) {
                 updateActiveAccountError(true)
@@ -223,22 +220,10 @@ class MainViewModel(
         return songs.value.filter { it.song.album == albumTitle }
     }
 
-    private val _processingMetadataIds = MutableStateFlow<Set<String>>(emptySet())
-
     fun fetchMetadataForSongs(songsToProcess: List<SyncSong>) {
         viewModelScope.launch {
-            val idsToProcess = songsToProcess
-                .filter { it.localPath != null && it.song.artist == "Unknown Artist" }
-                .map { it.song.id }
-                .filter { it !in _processingMetadataIds.value }
-
-            if (idsToProcess.isEmpty()) return@launch
-
-            _processingMetadataIds.update { it + idsToProcess }
-
-            idsToProcess.forEach { id ->
-                repository.fetchMetadata(id)
-            }
+            songsToProcess.filter { it.localPath != null && it.song.artist == "Unknown Artist" }
+                .forEach { repository.fetchMetadata(it.song.id) }
         }
     }
 
@@ -254,8 +239,6 @@ class MainViewModel(
 
     fun pauseDownload(id: String) {
         viewModelScope.launch {
-            // Check if it's an album ID or song ID. For now assume album ID from UI.
-            // In a better design we might distinguish them, but let's try both.
             repository.pauseAlbumDownload(id)
             repository.pauseDownload(id)
         }

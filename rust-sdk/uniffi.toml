@@ -1,0 +1,5 @@
+[bindings.kotlin]
+# Use JNI instead of JNA
+type = "jni"
+# Optional: customize the package name
+package_name = "uniffi.sonark_sdk"
