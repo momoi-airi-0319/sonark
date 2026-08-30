@@ -21,6 +21,29 @@ dictionary Song {
     DownloadStatus download_status;
 };
 
+dictionary Album {
+    string id;
+    string title;
+    string artist;
+    string? cover_url;
+    string? local_cover_path;
+    u32 song_count;
+};
+
+dictionary Artist {
+    string name;
+    u32 album_count;
+    u32 song_count;
+};
+
+dictionary LibraryStats {
+    u32 total_songs;
+    u32 total_albums;
+    u32 total_artists;
+    u64 total_size_bytes;
+    string last_sync_time;
+};
+
 enum DownloadStatus {
     "None",
     "Pending",
@@ -52,6 +75,11 @@ interface SonarkEngine {
     void set_observer(SonarkObserver observer);
     void set_auth_provider(AuthProvider auth_provider);
     sequence<Song> get_all_songs();
+    sequence<Album> get_all_albums();
+    sequence<Artist> get_all_artists();
+    sequence<Song> get_songs_for_album(string album_id);
+    sequence<Song> get_songs_for_artist(string artist_name);
+    LibraryStats get_library_stats();
     sequence<Song> search(string query);
     void sync_library();
     void start_download(string song_id, string url, string destination);

@@ -80,7 +80,7 @@ fun LibraryGrid(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(albums, key = { it.title }) { album ->
+                        items(albums, key = { it.id }) { album ->
                             val uiItem = remember(album) { AlbumUiItem.from(album) }
                             uiItem.GridItem(
                                 onClick = { onAlbumClick(album) },

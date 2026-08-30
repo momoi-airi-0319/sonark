@@ -18,7 +18,6 @@ import md.oak.sonark.ui.screens.LibraryScreen
 import md.oak.sonark.ui.screens.PlayerScreen
 import md.oak.sonark.ui.screens.SearchScreen
 import md.oak.sonark.ui.screens.SettingsScreen
-import md.oak.sonark.ui.utils.ArtistUtils
 
 @androidx.media3.common.util.UnstableApi
 @Composable
@@ -53,7 +52,7 @@ fun createNavEntryProvider(
                 isPlaying = isPlaying,
                 progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                 onAlbumClick = { album ->
-                    navigator.navigate(AlbumKey(album.title))
+                    navigator.navigate(AlbumKey(album.id))
                 },
                 onArtistClick = { artist ->
                     navigator.navigate(ArtistKey(artist.name))
@@ -84,7 +83,7 @@ fun createNavEntryProvider(
                     playbackViewModel.playQueue(listOf(song), 0)
                 },
                 onAlbumClick = { album ->
-                    navigator.navigate(AlbumKey(album.title))
+                    navigator.navigate(AlbumKey(album.id))
                 },
                 onArtistClick = { artistName ->
                     navigator.navigate(ArtistKey(artistName))
@@ -93,27 +92,18 @@ fun createNavEntryProvider(
         }
         entry<ArtistKey> { key ->
             val albums by viewModel.albums.collectAsStateWithLifecycle()
-            val songs by viewModel.songs.collectAsStateWithLifecycle()
             
             val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
             val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
             val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
             val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
 
-            val normalizedTarget = remember(key) { ArtistUtils.normalize(key.artistName) }
-            
-            val personalAlbums = remember(normalizedTarget, albums) {
-                albums.filter { ArtistUtils.normalize(it.artist) == normalizedTarget }
+            val personalAlbums = remember(key, albums) {
+                albums.filter { it.artist == key.artistName }
             }
             
-            val featuredSongsList = remember(normalizedTarget, songs) {
-                songs.filter { syncSong ->
-                    // Artist is in song's artist list
-                    val isParticipant = ArtistUtils.splitArtists(syncSong.song.artist).any { ArtistUtils.normalize(it) == normalizedTarget }
-                    // AND it's NOT part of a personal album (to avoid duplicates)
-                    val isInPersonalAlbum = personalAlbums.any { it.title == syncSong.song.album }
-                    isParticipant && !isInPersonalAlbum
-                }
+            val featuredSongsList = remember(key) {
+                viewModel.getSongsForArtist(key.artistName)
             }
 
             ArtistScreen(
@@ -124,7 +114,7 @@ fun createNavEntryProvider(
                 isPlaying = isPlaying,
                 progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                 onAlbumClick = { album ->
-                    navigator.navigate(AlbumKey(album.title))
+                    navigator.navigate(AlbumKey(album.id))
                 },
                 onSongClick = { syncSong ->
                     playbackViewModel.playQueue(featuredSongsList, featuredSongsList.indexOf(syncSong))
@@ -136,7 +126,6 @@ fun createNavEntryProvider(
         }
         entry<AlbumKey> { key ->
             val albums by viewModel.albums.collectAsStateWithLifecycle()
-            val songs by viewModel.songs.collectAsStateWithLifecycle()
             
             val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
             val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
@@ -144,10 +133,10 @@ fun createNavEntryProvider(
             val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
 
             val album = remember(key, albums) {
-                albums.find { it.title == key.albumTitle }
+                albums.find { it.id == key.albumId }
             }
-            val albumSongs = remember(key, songs) {
-                viewModel.getSongsForAlbum(key.albumTitle)
+            val albumSongs = remember(key) {
+                viewModel.getSongsForAlbum(key.albumId)
             }
             album?.let {
                 AlbumScreen(
@@ -191,8 +180,8 @@ fun createNavEntryProvider(
                 onToggleShuffle = { playbackViewModel.toggleShuffle() },
                 onToggleRepeatMode = { playbackViewModel.toggleRepeatMode() },
                 onBackClick = { navigator.navigate(LibraryKey) },
-                onAlbumClick = { albumTitle ->
-                    navigator.navigate(AlbumKey(albumTitle))
+                onAlbumClick = { albumId ->
+                    navigator.navigate(AlbumKey(albumId))
                 },
             )
         }

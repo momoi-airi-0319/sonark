@@ -97,7 +97,7 @@ fun PlayerScreen(
                 AlbumArt(
                     imageUrl = metadata.imageUrl,
                     type = metadata.type,
-                    onAlbumClick = { onAlbumClick(metadata.album) }
+                    onAlbumClick = { onAlbumClick(song.albumId) }
                 )
 
                 Spacer(modifier = Modifier.height(48.dp))

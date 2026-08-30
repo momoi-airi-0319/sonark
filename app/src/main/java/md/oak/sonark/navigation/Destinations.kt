@@ -10,7 +10,7 @@ data object HomeKey : NavKey
 data object LibraryKey : NavKey
 
 @Serializable
-data class AlbumKey(val albumTitle: String) : NavKey
+data class AlbumKey(val albumId: String) : NavKey
 
 @Serializable
 data object PlayerKey : NavKey

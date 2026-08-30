@@ -7,12 +7,19 @@ import uniffi.sonark_sdk.Song as RustSong
 import md.oak.sonark.data.model.Song as KotlinSong
 import md.oak.sonark.data.model.DownloadStatus as KotlinStatus
 import md.oak.sonark.data.model.Album as KotlinAlbum
+import md.oak.sonark.data.model.Artist as KotlinArtist
 
 class MusicRepository(
-    private val engine: SonarkEngine
+    private val engine: SonarkEngine,
 ) {
     private val _songsFlow = MutableStateFlow<List<SyncSong>>(emptyList())
     val songsFlow: StateFlow<List<SyncSong>> = _songsFlow.asStateFlow()
+
+    private val _albumsFlow = MutableStateFlow<List<KotlinAlbum>>(emptyList())
+    val albumsFlow: StateFlow<List<KotlinAlbum>> = _albumsFlow.asStateFlow()
+
+    private val _artistsFlow = MutableStateFlow<List<KotlinArtist>>(emptyList())
+    val artistsFlow: StateFlow<List<KotlinArtist>> = _artistsFlow.asStateFlow()
 
     init {
         refreshLocalCache()
@@ -20,9 +27,11 @@ class MusicRepository(
             override fun onDownloadProgress(progress: DownloadProgress) {
                 this@MusicRepository.onDownloadProgress(progress)
             }
+
             override fun onSyncComplete(songs: List<RustSong>) {
                 this@MusicRepository.onSyncComplete(songs)
             }
+
             override fun onError(message: String) {
                 // Handle error
             }
@@ -30,34 +39,20 @@ class MusicRepository(
     }
 
     fun getSyncSongsFlow(): Flow<List<SyncSong>> = songsFlow
-
-    fun getAlbumsFlow(): Flow<List<KotlinAlbum>> = songsFlow.map { syncSongs ->
-        syncSongs.groupBy { it.albumId }.map { (_, songs) ->
-            val first = songs.first()
-            val albumSongs = songs.map { it.song }
-            if (songs.any { it.song.type == AlbumType.CUE }) {
-                KotlinAlbum.Cue(
-                    title = first.song.album,
-                    artist = first.song.artist,
-                    imageUrl = first.song.imageUrl,
-                    localPath = first.localPath,
-                    songs = albumSongs
-                )
-            } else {
-                KotlinAlbum.Normal(
-                    title = first.song.album,
-                    artist = first.song.artist,
-                    imageUrl = first.song.imageUrl,
-                    localPath = first.localPath,
-                    songs = albumSongs
-                )
-            }
-        }
-    }
+    fun getAlbumsFlow(): Flow<List<KotlinAlbum>> = albumsFlow
+    fun getArtistsFlow(): Flow<List<KotlinArtist>> = artistsFlow
 
     private fun refreshLocalCache() {
         val rustSongs = engine.getAllSongs()
         _songsFlow.value = rustSongs.map { it.toSyncSong() }
+
+        val rustAlbums = engine.getAllAlbums()
+        _albumsFlow.value = rustAlbums.map { it.toKotlinAlbum() }
+
+        val rustArtists = engine.getAllArtists()
+        _artistsFlow.value = rustArtists.map {
+            KotlinArtist(it.name, it.albumCount.toInt(), it.songCount.toInt())
+        }
     }
 
     fun syncAll() {
@@ -65,7 +60,7 @@ class MusicRepository(
     }
 
     private fun onSyncComplete(rustSongs: List<RustSong>) {
-        _songsFlow.value = rustSongs.map { it.toSyncSong() }
+        refreshLocalCache()
     }
 
     private fun onDownloadProgress(progress: DownloadProgress) {
@@ -107,6 +102,22 @@ class MusicRepository(
         }
     }
 
+    fun searchSongs(query: String): List<SyncSong> {
+        return engine.search(query).map { it.toSyncSong() }
+    }
+
+    fun getSongsForAlbum(albumId: String): List<SyncSong> {
+        return engine.getSongsForAlbum(albumId).map { it.toSyncSong() }
+    }
+
+    fun getSongsForArtist(artistName: String): List<SyncSong> {
+        return engine.getSongsForArtist(artistName).map { it.toSyncSong() }
+    }
+
+    fun getLibraryStats(): uniffi.sonark_sdk.LibraryStats {
+        return engine.getLibraryStats()
+    }
+
     fun getProvider(id: String): Any? = null 
 
     private fun RustSong.toSyncSong(): SyncSong {
@@ -130,6 +141,17 @@ class MusicRepository(
             localPath = this.localPath,
             downloadStatus = this.downloadStatus.toKotlin(),
             startOffset = this.startOffsetMs.toLong()
+        )
+    }
+
+    private fun uniffi.sonark_sdk.Album.toKotlinAlbum(): KotlinAlbum {
+        return KotlinAlbum.Normal(
+            id = this.id,
+            title = this.title,
+            artist = this.artist,
+            imageUrl = this.coverUrl,
+            localPath = this.localCoverPath,
+            songs = emptyList()
         )
     }
 

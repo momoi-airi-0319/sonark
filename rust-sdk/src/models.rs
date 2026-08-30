@@ -30,7 +30,27 @@ pub enum DownloadStatus {
     Error,
 }
 
-#[derive(Clone, Debug)]
+impl From<&str> for DownloadStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "Pending" => DownloadStatus::Pending,
+            "Downloading" => DownloadStatus::Downloading,
+            "Completed" => DownloadStatus::Completed,
+            "Paused" => DownloadStatus::Paused,
+            "Error" => DownloadStatus::Error,
+            _ => DownloadStatus::None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Artist {
+    pub name: String,
+    pub album_count: u32,
+    pub song_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Album {
     pub id: String,
     pub title: String,
@@ -38,7 +58,15 @@ pub struct Album {
     pub cover_url: Option<String>,
     pub local_cover_path: Option<String>,
     pub song_count: u32,
-    pub download_status: DownloadStatus,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LibraryStats {
+    pub total_songs: u32,
+    pub total_albums: u32,
+    pub total_artists: u32,
+    pub total_size_bytes: u64,
+    pub last_sync_time: String,
 }
 
 #[derive(Clone, Debug)]

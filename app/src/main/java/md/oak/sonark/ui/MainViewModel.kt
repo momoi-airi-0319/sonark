@@ -15,7 +15,6 @@ import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.data.repository.SettingsRepository
 import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.model.AlbumDownloadItem
-import md.oak.sonark.ui.utils.ArtistUtils
 
 enum class SortOrder {
     TITLE, ARTIST
@@ -71,33 +70,10 @@ class MainViewModel(
             albums.sortedBy { it.title.lowercase() }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val artists: StateFlow<List<Artist>> = combine(songs, albums) { allSongs, allAlbums ->
-        allSongs.flatMap { syncSong ->
-            ArtistUtils.splitArtists(syncSong.song.artist).map { it to syncSong }
-        }
-        .groupBy { ArtistUtils.normalize(it.first) }
-        .map { (normalizedTarget, normalizedGroup) ->
-            val variations = normalizedGroup.groupBy { it.first }
-            
-            val bestName = variations.keys.asSequence()
-                .sortedWith(
-                compareByDescending<String> { name ->
-                    allAlbums.count { album -> album.artist == name }
-                }.thenByDescending { name ->
-                    variations[name]?.size ?: 0
-                }.thenByDescending { it }
-            ).first()
-
-            val allArtistSongs = normalizedGroup.map { it.second }
-            Artist(
-                name = bestName,
-                albumCount = allAlbums.count { ArtistUtils.normalize(it.artist) == normalizedTarget },
-                songCount = allArtistSongs.size,
-                imageUrl = null
-            )
-        }
-        .sortedBy { it.name.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val artists: StateFlow<List<Artist>> = repository.getArtistsFlow()
+        .map { artists ->
+            artists.sortedBy { it.name.lowercase() }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val downloadQueue: StateFlow<List<AlbumDownloadItem>> = songs
         .map { allSyncSongs ->
@@ -216,13 +192,17 @@ class MainViewModel(
         _sortOrder.value = order
     }
 
-    fun getSongsForAlbum(albumTitle: String): List<SyncSong> {
-        return songs.value.filter { it.song.album == albumTitle }
+    fun getSongsForAlbum(albumId: String): List<SyncSong> {
+        return repository.getSongsForAlbum(albumId)
+    }
+
+    fun getSongsForArtist(artistName: String): List<SyncSong> {
+        return repository.getSongsForArtist(artistName)
     }
 
     fun fetchMetadataForSongs(songsToProcess: List<SyncSong>) {
         viewModelScope.launch {
-            songsToProcess.filter { it.localPath != null && it.song.artist == "Unknown Artist" }
+            songsToProcess.filter { it.localPath != null }
                 .forEach { repository.fetchMetadata(it.song.id) }
         }
     }

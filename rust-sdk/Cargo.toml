@@ -28,6 +28,10 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 lofty = "0.21"
 md5 = "0.7"
 walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+mockito = "1.4"
 
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"] }

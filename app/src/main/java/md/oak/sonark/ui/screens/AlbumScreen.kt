@@ -205,6 +205,7 @@ private fun AlbumDetailsDialog(
 @Composable
 fun AlbumScreenPreview() {
     val album = Album.Normal(
+        id = "albumId",
         title = "Fantasy",
         artist = "Jay Chou",
         localPath = "/music/jay",
