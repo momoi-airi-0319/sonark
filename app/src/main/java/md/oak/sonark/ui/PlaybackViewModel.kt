@@ -25,8 +25,11 @@ import md.oak.sonark.playback.PlaybackService
 import androidx.core.net.toUri
 import kotlin.time.Duration.Companion.milliseconds
 
+import android.util.Log
+
 @UnstableApi
 class PlaybackViewModel(application: Application) : AndroidViewModel(application) {
+    private val TAG = "PlaybackViewModel"
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val controller: MediaController? get() = if (controllerFuture?.isDone == true) controllerFuture?.get() else null
@@ -113,8 +116,15 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun playQueue(songs: List<SyncSong>, startIndex: Int = 0) {
-        val controller = this.controller ?: return
-        val playableSongs = songs.filter { it.localPath != null && java.io.File(it.localPath).exists() }
+        Log.e(TAG, "playQueue: songs size=${songs.size}, startIndex=$startIndex")
+        val controller = this.controller ?: run {
+            Log.e(TAG, "playQueue: controller is null")
+            return
+        }
+        
+        // Allow playing if it has a local path OR a data URL (streaming)
+        val playableSongs = songs.filter { it.localPath != null || it.data.isNotEmpty() }
+        Log.e(TAG, "playQueue: playableSongs size=${playableSongs.size}")
         if (playableSongs.isEmpty()) return
 
         val targetSong = songs.getOrNull(startIndex)
@@ -144,7 +154,13 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun createMediaItem(syncSong: SyncSong, nextSong: SyncSong?): MediaItem {
-        val uri = Uri.fromFile(java.io.File(syncSong.localPath!!))
+        val uri = if (syncSong.localPath != null && java.io.File(syncSong.localPath).exists()) {
+            Uri.fromFile(java.io.File(syncSong.localPath))
+        } else {
+            syncSong.data.toUri()
+        }
+        Log.d(TAG, "createMediaItem: title=${syncSong.song.title}, uri=$uri")
+        
         val duration = when {
             syncSong.song.duration > 0 -> syncSong.song.duration
             syncSong.song.type == AlbumType.CUE && nextSong?.albumId == syncSong.albumId -> 

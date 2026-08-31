@@ -9,6 +9,7 @@ import uniffi.sonark_sdk.SonarkEngine
 import uniffi.sonark_sdk.AuthProvider
 
 object Dependencies {
+    lateinit var context: Context
     lateinit var musicRepository: MusicRepository
     lateinit var settingsRepository: SettingsRepository
     lateinit var accountRepository: AccountRepository
@@ -16,6 +17,7 @@ object Dependencies {
     lateinit var sonarkEngine: SonarkEngine
 
     fun init(context: Context) {
+        this.context = context.applicationContext
         if (!::settingsRepository.isInitialized) {
             settingsRepository = SettingsRepository(context.applicationContext)
         }
@@ -24,6 +26,7 @@ object Dependencies {
         }
         
         if (!::sonarkEngine.isInitialized) {
+            System.loadLibrary("uniffi_sonark_sdk")
             val dbFile = context.getDatabasePath("sonark_v2.db")
             dbFile.parentFile?.mkdirs()
             sonarkEngine = SonarkEngine(dbFile.absolutePath)

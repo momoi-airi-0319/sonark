@@ -27,6 +27,10 @@ import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.ui.utils.Formatter
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import md.oak.sonark.ui.theme.SonarkTheme
 import md.oak.sonark.data.model.Song
@@ -44,88 +48,98 @@ fun SongListItem(
     val song = syncSong.song
     val isDownloaded = syncSong.localPath != null
     
-    ListItem(
-        modifier = modifier.clickable(enabled = isDownloaded || isCurrent) { onClick() },
-        leadingContent = {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
-                AnimatedContent(
-                    targetState = isCurrent,
-                    transitionSpec = {
-                        scaleIn(initialScale = 0f, animationSpec = tween(400, delayMillis = 400))
-                            .togetherWith(scaleOut(targetScale = 0f, animationSpec = tween(400)))
-                    },
-                    label = "leadingTransition"
-                ) { targetIsCurrent ->
-                    if (targetIsCurrent) {
-                        CircularWavyProgressIndicator(
-                            progress = progress,
-                            isPlaying = isPlaying,
-                            imageUrl = null,
-                            showImage = false,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    } else {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Surface(
-                                modifier = Modifier.size(6.dp),
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer
-                            ) {}
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        onClick = {
+            android.util.Log.e("SongListItem", "SURFACE_CLICKED: ${song.title}")
+            onClick()
+        },
+        color = if (isDownloaded) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    ) {
+        ListItem(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            leadingContent = {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(36.dp)) {
+                    AnimatedContent(
+                        targetState = isCurrent,
+                        transitionSpec = {
+                            scaleIn(initialScale = 0f, animationSpec = tween(400, delayMillis = 400))
+                                .togetherWith(scaleOut(targetScale = 0f, animationSpec = tween(400)))
+                        },
+                        label = "leadingTransition"
+                    ) { targetIsCurrent ->
+                        if (targetIsCurrent) {
+                            CircularWavyProgressIndicator(
+                                progress = progress,
+                                isPlaying = isPlaying,
+                                imageUrl = null,
+                                showImage = false,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        } else {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Surface(
+                                    modifier = Modifier.size(6.dp),
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {}
+                            }
                         }
                     }
                 }
-            }
-        },
-        headlineContent = {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary
-                } else if (isDownloaded) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        },
-        supportingContent = {
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                } else if (isDownloaded) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        },
-        trailingContent = {
-            if (isDownloaded) {
+            },
+            headlineContent = {
                 Text(
-                    text = Formatter.formatDuration(song.duration),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    textAlign = TextAlign.End
+                    text = song.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isCurrent) {
+                        MaterialTheme.colorScheme.primary
+                    } else if (isDownloaded) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-            } else if (syncSong.downloadStatus == DownloadStatus.DOWNLOADING) {
-                CircularProgressIndicator(
-                    progress = { syncSong.downloadProgress / 100f },
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.primaryContainer
+            },
+            supportingContent = {
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isCurrent) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                    } else if (isDownloaded) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+            },
+            trailingContent = {
+                if (isDownloaded) {
+                    Text(
+                        text = Formatter.formatDuration(song.duration),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        textAlign = TextAlign.End
+                    )
+                } else if (syncSong.downloadStatus == DownloadStatus.DOWNLOADING) {
+                    CircularProgressIndicator(
+                        progress = { syncSong.downloadProgress / 100f },
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                }
             }
-        }
-    )
+        )
+    }
 }
 
 @Preview(showBackground = true)

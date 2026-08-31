@@ -9,6 +9,9 @@ import md.oak.sonark.data.model.DownloadStatus as KotlinStatus
 import md.oak.sonark.data.model.Album as KotlinAlbum
 import md.oak.sonark.data.model.Artist as KotlinArtist
 
+import md.oak.sonark.data.Dependencies
+import java.io.File
+
 class MusicRepository(
     private val engine: SonarkEngine,
 ) {
@@ -79,7 +82,13 @@ class MusicRepository(
 
     fun resumeDownload(songId: String) {
         val song = _songsFlow.value.find { it.song.id == songId } ?: return
-        engine.startDownload(songId, song.data, song.localPath ?: "")
+        val destination = song.localPath ?: run {
+            // Generate a default path if missing
+            val musicDir = Dependencies.context.getExternalFilesDir("music") ?: return
+            val fileName = "${song.song.artist} - ${song.song.title}".replace("/", "_") + ".mp3"
+            File(musicDir, fileName).absolutePath
+        }
+        engine.startDownload(songId, song.data, destination)
     }
 
     fun pauseDownload(songId: String) {}

@@ -386,6 +386,7 @@ async fn list_all_files(client: &Client, token: &str, parent_id: &str, extra_q: 
 }
 
 async fn process_album(client: &Client, token: &str, folder: DriveFile, base_url: &str) -> anyhow::Result<Vec<Song>> {
+    log::debug!("Processing folder: {}", folder.name);
     let (folder_artist, folder_album) = parse_folder_name(&folder.name);
     let files = list_all_files(client, token, &folder.id, None, base_url).await?;
     let cover_file = files.iter().find(|f| { let n = f.name.to_lowercase(); n.starts_with("cover.") || n.starts_with("folder.") });
@@ -395,6 +396,7 @@ async fn process_album(client: &Client, token: &str, folder: DriveFile, base_url
 
     if !cue_files.is_empty() {
         for cue_file in cue_files {
+            log::info!("Processing CUE: {}", cue_file.name);
             let url = format!("{}/drive/v3/files/{}?alt=media", base_url, cue_file.id);
             let response = client.get(url).bearer_auth(token).send().await
                 .map_err(|e| anyhow::anyhow!("Failed to fetch CUE: {}", e))?;
@@ -431,6 +433,7 @@ async fn process_album(client: &Client, token: &str, folder: DriveFile, base_url
         for file in files {
             if is_audio_file(&file.name) {
                 let (disc, track, title) = parse_filename(&file.name);
+                log::debug!("Parsed filename '{}' -> disc={}, track={}, title={}", file.name, disc, track, title);
                 songs.push(Song {
                     id: file.id.clone(),
                     title: if title.is_empty() { file.name.clone() } else { title },
@@ -802,7 +805,10 @@ mod tests {
         assert_eq!(parse_folder_name("Pink Floyd - The Dark Side of the Moon"),
                    ("Pink Floyd".to_string(), "The Dark Side of the Moon".to_string()));
 
-        // Missing separator
+        // Real-world cases from device
+        assert_eq!(parse_folder_name("EXIT TUNES Presents GUMing from Megpoid"),
+                   ("Various Artists".to_string(), "EXIT TUNES Presents GUMing from Megpoid".to_string()));
+
         assert_eq!(parse_folder_name("SingleNameAlbum"),
                    ("Various Artists".to_string(), "SingleNameAlbum".to_string()));
 
@@ -847,4 +853,3 @@ mod tests {
         assert_eq!(parse_filename(".hidden_audio.mp3"), (0, 0, ".hidden_audio".to_string()));
     }
 }
-

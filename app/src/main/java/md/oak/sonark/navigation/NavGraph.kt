@@ -19,6 +19,8 @@ import md.oak.sonark.ui.screens.PlayerScreen
 import md.oak.sonark.ui.screens.SearchScreen
 import md.oak.sonark.ui.screens.SettingsScreen
 
+import android.util.Log
+
 @androidx.media3.common.util.UnstableApi
 @Composable
 fun createNavEntryProvider(
@@ -58,6 +60,7 @@ fun createNavEntryProvider(
                     navigator.navigate(ArtistKey(artist.name))
                 },
                 onSongClick = { syncSong ->
+                    Log.e("NavGraph", "onSongClick: ${syncSong.song.title}")
                     if (syncSong.song.id == currentSong?.song?.id) {
                         navigator.navigate(PlayerKey)
                     } else {

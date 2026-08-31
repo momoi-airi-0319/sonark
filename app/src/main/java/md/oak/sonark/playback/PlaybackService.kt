@@ -123,6 +123,7 @@ private class SonarkDataSource(
             url.contains("googleapis.com") -> {
                 // Bridge to the new central auth logic
                 val token = Dependencies.authManager.getLastKnownToken()
+                Log.e("PlaybackService", "Streaming request to $url, token present: ${token != null}")
                 if (token != null) mapOf("Authorization" to "Bearer $token") else emptyMap()
             }
             else -> emptyMap()
