@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 pub struct Song {
     pub id: String,
     pub title: String,
@@ -20,7 +20,7 @@ pub struct Song {
     pub download_status: DownloadStatus,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
 pub enum DownloadStatus {
     None,
     Pending,
@@ -43,14 +43,14 @@ impl From<&str> for DownloadStatus {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 pub struct Artist {
     pub name: String,
     pub album_count: u32,
     pub song_count: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 pub struct Album {
     pub id: String,
     pub title: String,
@@ -60,7 +60,7 @@ pub struct Album {
     pub song_count: u32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 pub struct LibraryStats {
     pub total_songs: u32,
     pub total_albums: u32,
@@ -69,7 +69,7 @@ pub struct LibraryStats {
     pub last_sync_time: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, uniffi::Record)]
 pub struct DownloadProgress {
     pub song_id: String,
     pub downloaded_bytes: u64,

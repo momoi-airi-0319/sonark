@@ -36,7 +36,7 @@ class MusicRepository(
             }
 
             override fun onError(message: String) {
-                // Handle error
+                android.util.Log.e("SonarkSDK", "uniffi_sonark_sdk: $message")
             }
         })
     }

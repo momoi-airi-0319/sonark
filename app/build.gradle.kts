@@ -114,6 +114,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.moshi.kotlin)
     implementation(libs.okhttp)
+    implementation(libs.jna)
     implementation(project(":rust-sdk"))
     implementation(libs.play.services.location)
     implementation(libs.retrofit)

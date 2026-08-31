@@ -92,41 +92,14 @@ class PlaybackService : MediaSessionService() {
 @UnstableApi
 private class SonarkDataSourceFactory : DataSource.Factory {
     override fun createDataSource(): DataSource {
-        val httpDataSource = DefaultHttpDataSource.Factory()
+        // We set the default headers on the factory itself to ensure they are sent with redirects
+        val token = Dependencies.authManager.getLastKnownToken()
+        val headers = if (token != null) mapOf("Authorization" to "Bearer $token") else emptyMap()
+        
+        return DefaultHttpDataSource.Factory()
             .setUserAgent("Sonark")
             .setAllowCrossProtocolRedirects(true)
+            .setDefaultRequestProperties(headers)
             .createDataSource()
-        return SonarkDataSource(httpDataSource)
-    }
-}
-
-@UnstableApi
-private class SonarkDataSource(
-    private val baseDataSource: DataSource,
-) : DataSource by baseDataSource {
-    override fun open(dataSpec: DataSpec): Long {
-        val url = dataSpec.uri.toString()
-        val headers = getHeadersForUrl(url)
-
-        val authorizedDataSpec = if (headers.isNotEmpty()) {
-            dataSpec.buildUpon()
-                .setHttpRequestHeaders(headers)
-                .build()
-        } else {
-            dataSpec
-        }
-        return baseDataSource.open(authorizedDataSpec)
-    }
-
-    private fun getHeadersForUrl(url: String): Map<String, String> {
-        return when {
-            url.contains("googleapis.com") -> {
-                // Bridge to the new central auth logic
-                val token = Dependencies.authManager.getLastKnownToken()
-                Log.e("PlaybackService", "Streaming request to $url, token present: ${token != null}")
-                if (token != null) mapOf("Authorization" to "Bearer $token") else emptyMap()
-            }
-            else -> emptyMap()
-        }
     }
 }

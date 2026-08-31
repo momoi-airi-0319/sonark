@@ -11,9 +11,12 @@ import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.api.services.drive.DriveScopes
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import md.oak.sonark.BuildConfig
 import kotlin.coroutines.resume
 
@@ -92,21 +95,35 @@ class AuthManager(private val context: Context) {
     }
 
     suspend fun silentSignIn(email: String): String? {
-        return suspendCancellableCoroutine { continuation ->
-            val authRequest = createAuthorizationRequest(email)
-            getAuthorizationClient().authorize(authRequest)
-                .addOnSuccessListener { result ->
-                    if (result.hasResolution()) {
-                        continuation.resume(null)
-                    } else {
-                        lastAccessToken = result.accessToken
-                        continuation.resume(result.accessToken)
-                    }
+        return withContext(Dispatchers.IO) {
+            try {
+                val account = android.accounts.Account(email, "com.google")
+                val scope = "oauth2:https://www.googleapis.com/auth/drive.readonly"
+                val token = GoogleAuthUtil.getToken(context, account, scope)
+                Log.d("AuthManager", "Token obtained via GoogleAuthUtil for $email")
+                lastAccessToken = token
+                token
+            } catch (e: Exception) {
+                Log.e("AuthManager", "GoogleAuthUtil failed for $email", e)
+                
+                // Fallback to the original logic
+                suspendCancellableCoroutine<String?> { continuation ->
+                    val authRequest = createAuthorizationRequest(email)
+                    getAuthorizationClient().authorize(authRequest)
+                        .addOnSuccessListener { result ->
+                            if (result.hasResolution()) {
+                                continuation.resume(null)
+                            } else {
+                                lastAccessToken = result.accessToken
+                                continuation.resume(result.accessToken)
+                            }
+                        }
+                        .addOnFailureListener { e2 ->
+                            Log.e("AuthManager", "Identity.authorize also failed", e2)
+                            continuation.resume(null)
+                        }
                 }
-                .addOnFailureListener { e ->
-                    Log.e("AuthManager", "Silent sign-in failed", e)
-                    continuation.resume(null)
-                }
+            }
         }
     }
 }

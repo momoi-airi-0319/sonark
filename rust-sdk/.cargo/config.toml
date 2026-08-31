@@ -1,8 +1,9 @@
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-z", "-C", "link-arg=max-page-size=16384"]
-
 [target.aarch64-linux-android]
+linker = "C:\\Users\\airi\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.16138531\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android35-clang.cmd"
+ar = "C:\\Users\\airi\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.16138531\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\llvm-ar.exe"
 rustflags = ["-C", "link-arg=-z", "-C", "link-arg=max-page-size=16384"]
 
 [target.x86_64-linux-android]
+linker = "C:\\Users\\airi\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.16138531\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\x86_64-linux-android35-clang.cmd"
+ar = "C:\\Users\\airi\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.16138531\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\llvm-ar.exe"
 rustflags = ["-C", "link-arg=-z", "-C", "link-arg=max-page-size=16384"]

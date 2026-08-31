@@ -8,6 +8,9 @@ import md.oak.sonark.data.repository.SettingsRepository
 import uniffi.sonark_sdk.SonarkEngine
 import uniffi.sonark_sdk.AuthProvider
 
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.runBlocking
+
 object Dependencies {
     lateinit var context: Context
     lateinit var musicRepository: MusicRepository
@@ -34,9 +37,20 @@ object Dependencies {
             // Bridge Auth to Rust
             sonarkEngine.setAuthProvider(object : AuthProvider {
                 override fun getAccessToken(): String {
-                    // Rust Engine will call this when it needs a token for Google Drive API.
-                    // We return the last known valid token from our AuthManager.
-                    return authManager.getLastKnownToken() ?: ""
+                    // Try to get existing token
+                    val existingToken = authManager.getLastKnownToken()
+                    if (existingToken != null) return existingToken
+
+                    // If missing, try silent sign-in
+                    return runBlocking {
+                        val email = settingsRepository.googleAccountName.firstOrNull()
+                        if (email != null) {
+                            android.util.Log.d("SonarkSDK", "Token missing, attempting silent sign-in for $email")
+                            authManager.silentSignIn(email)
+                        } else {
+                            null
+                        }
+                    } ?: ""
                 }
             })
         }

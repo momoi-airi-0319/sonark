@@ -86,7 +86,6 @@ class MainActivity : ComponentActivity() {
     @androidx.media3.common.util.UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        android.util.Log.e("MainActivity", "ON_CREATE_TRIGGERED")
         enableEdgeToEdge()
 
         Dependencies.init(applicationContext)
