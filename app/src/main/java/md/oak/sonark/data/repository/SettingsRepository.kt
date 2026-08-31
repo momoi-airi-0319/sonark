@@ -30,6 +30,14 @@ class SettingsRepository(private val context: Context) {
         return context.getDatabasePath(name)
     }
 
+    fun getLegacyMusicDir(): File? {
+        return context.getExternalFilesDir("music")
+    }
+
+    fun getLegacyDatabaseFile(): File {
+        return context.getDatabasePath("sonark_v2.db")
+    }
+
     val googleAccountName: Flow<String?> = context.dataStore.data
         .map { preferences ->
             preferences[googleAccountNameKey]

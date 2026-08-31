@@ -60,7 +60,7 @@ object Dependencies {
         }
         
         if (!::musicRepository.isInitialized) {
-            musicRepository = MusicRepository(sonarkEngine)
+            musicRepository = MusicRepository(sonarkEngine, settingsRepository)
         }
     }
 }

@@ -29,11 +29,12 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val accounts by viewModel.storedAccounts.collectAsStateWithLifecycle()
+    val storageUsage by viewModel.storageUsage.collectAsStateWithLifecycle()
     
     SettingsContent(
         accounts = accounts,
-        storageUsage = emptyMap(),
-        onClearCache = { /* TODO */ },
+        storageUsage = storageUsage,
+        onClearCache = { viewModel.clearCache(it) },
         onBackClick = onBackClick,
         modifier = modifier
     )

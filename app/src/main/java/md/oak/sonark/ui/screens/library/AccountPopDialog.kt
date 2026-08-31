@@ -23,6 +23,7 @@ import md.oak.sonark.data.repository.StorageQuota
 import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.SortOrder
 import md.oak.sonark.ui.components.UserAvatar
+import md.oak.sonark.ui.utils.Formatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,6 +140,10 @@ private fun AccountDialogContent(
                             account = activeAccount,
                             onLogTokenClick = { onLogTokenClick(activeAccount) }
                         )
+                        
+                        if (storageQuota != null) {
+                            StorageQuotaItem(quota = storageQuota)
+                        }
                     }
 
                     // A list of other accounts
@@ -229,6 +234,41 @@ private fun AccountDialogContent(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun StorageQuotaItem(quota: StorageQuota) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Storage",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "${Formatter.formatFileSize(quota.usedBytes)} / ${Formatter.formatFileSize(quota.totalBytes)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        LinearProgressIndicator(
+            progress = { quota.usedPercentage / 100f },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(CircleShape),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        )
     }
 }
 

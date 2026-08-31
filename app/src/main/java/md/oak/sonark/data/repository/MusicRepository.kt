@@ -1,5 +1,6 @@
 package md.oak.sonark.data.repository
 
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import md.oak.sonark.data.model.*
 import uniffi.sonark_sdk.*
@@ -14,7 +15,11 @@ import java.io.File
 
 class MusicRepository(
     private val engine: SonarkEngine,
+    private val settingsRepository: SettingsRepository,
 ) {
+    private val repositoryScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var activeEmail: String? = null
+
     private val _songsFlow = MutableStateFlow<List<SyncSong>>(emptyList())
     val songsFlow: StateFlow<List<SyncSong>> = _songsFlow.asStateFlow()
 
@@ -26,6 +31,14 @@ class MusicRepository(
 
     init {
         refreshLocalCache()
+        
+        // Track active account
+        repositoryScope.launch {
+            settingsRepository.googleAccountName.collect { email ->
+                activeEmail = email
+            }
+        }
+
         engine.setObserver(object : SonarkObserver {
             override fun onDownloadProgress(progress: DownloadProgress) {
                 this@MusicRepository.onDownloadProgress(progress)
@@ -84,7 +97,11 @@ class MusicRepository(
         val song = _songsFlow.value.find { it.song.id == songId } ?: return
         val destination = song.localPath ?: run {
             // Generate a default path if missing
-            val musicDir = Dependencies.context.getExternalFilesDir("music") ?: return
+            val musicDir = activeEmail?.let { settingsRepository.getAccountMusicDir(it) }
+                ?: Dependencies.context.getExternalFilesDir("music") 
+                ?: return
+            
+            if (!musicDir.exists()) musicDir.mkdirs()
             val fileName = "${song.song.artist} - ${song.song.title}".replace("/", "_") + ".mp3"
             File(musicDir, fileName).absolutePath
         }
