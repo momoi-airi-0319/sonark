@@ -60,6 +60,15 @@ dictionary DownloadProgress {
     DownloadStatus status;
 };
 
+[Error]
+enum SonarkError {
+    "DatabaseError",
+    "NetworkError",
+    "AuthError",
+    "SyncError",
+    "InternalError"
+};
+
 callback interface SonarkObserver {
     void on_download_progress(DownloadProgress progress);
     void on_sync_complete(sequence<Song> songs);
@@ -71,6 +80,7 @@ callback interface AuthProvider {
 };
 
 interface SonarkEngine {
+    [Throws=SonarkError]
     constructor(string db_path);
     void set_observer(SonarkObserver observer);
     void set_auth_provider(AuthProvider auth_provider);

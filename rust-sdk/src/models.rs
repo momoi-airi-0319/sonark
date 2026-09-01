@@ -76,3 +76,29 @@ pub struct DownloadProgress {
     pub total_bytes: u64,
     pub status: DownloadStatus,
 }
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum SonarkError {
+    #[error("Database error: {message}")]
+    DatabaseError { message: String },
+    #[error("Network error: {message}")]
+    NetworkError { message: String },
+    #[error("Auth error: {message}")]
+    AuthError { message: String },
+    #[error("Sync error: {message}")]
+    SyncError { message: String },
+    #[error("Internal error: {message}")]
+    InternalError { message: String },
+}
+
+impl From<anyhow::Error> for SonarkError {
+    fn from(e: anyhow::Error) -> Self {
+        SonarkError::InternalError { message: e.to_string() }
+    }
+}
+
+impl From<rusqlite::Error> for SonarkError {
+    fn from(e: rusqlite::Error) -> Self {
+        SonarkError::DatabaseError { message: e.to_string() }
+    }
+}

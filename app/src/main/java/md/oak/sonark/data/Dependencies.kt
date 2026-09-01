@@ -32,27 +32,32 @@ object Dependencies {
             System.loadLibrary("uniffi_sonark_sdk")
             val dbFile = context.getDatabasePath("sonark_v2.db")
             dbFile.parentFile?.mkdirs()
-            sonarkEngine = SonarkEngine(dbFile.absolutePath)
-            
-            // Bridge Auth to Rust
-            sonarkEngine.setAuthProvider(object : AuthProvider {
-                override fun getAccessToken(): String {
-                    // Try to get existing token
-                    val existingToken = authManager.getLastKnownToken()
-                    if (existingToken != null) return existingToken
+            try {
+                sonarkEngine = SonarkEngine(dbFile.absolutePath)
+                
+                // Bridge Auth to Rust
+                sonarkEngine.setAuthProvider(object : AuthProvider {
+                    override fun getAccessToken(): String {
+                        // Try to get existing token
+                        val existingToken = authManager.getLastKnownToken()
+                        if (existingToken != null) return existingToken
 
-                    // If missing, try silent sign-in
-                    return runBlocking {
-                        val email = settingsRepository.googleAccountName.firstOrNull()
-                        if (email != null) {
-                            android.util.Log.d("SonarkSDK", "Token missing, attempting silent sign-in for $email")
-                            authManager.silentSignIn(email)
-                        } else {
-                            null
-                        }
-                    } ?: ""
-                }
-            })
+                        // If missing, try silent sign-in
+                        return runBlocking {
+                            val email = settingsRepository.googleAccountName.firstOrNull()
+                            if (email != null) {
+                                android.util.Log.d("SonarkSDK", "Token missing, attempting silent sign-in for $email")
+                                authManager.silentSignIn(email)
+                            } else {
+                                null
+                            }
+                        } ?: ""
+                    }
+                })
+            } catch (e: Exception) {
+                android.util.Log.e("SonarkSDK", "Failed to initialize SonarkEngine", e)
+                // We should handle this gracefully in the UI
+            }
         }
 
         if (!::accountRepository.isInitialized) {

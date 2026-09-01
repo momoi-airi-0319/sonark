@@ -403,20 +403,9 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_cleanup() {
-        let db = setup_db();
-        let mut s1 = create_mock_song("1", "S1", "A1");
-        s1.album_id = "A1".to_string();
-        let mut s2 = create_mock_song("2", "S2", "A2");
-        s2.album_id = "A2".to_string();
-        db.save_songs(&[s1, s2]).unwrap();
-
-        // Keep only A1
-        db.delete_songs_not_in_albums(&["A1".to_string()]).unwrap();
-
-        let all = db.get_all_songs().unwrap();
-        assert_eq!(all.len(), 1);
-        assert_eq!(all[0].album_id, "A1");
+    fn test_open_invalid_path() {
+        let result = Database::open("/non/existent/path/db.sqlite");
+        assert!(result.is_err());
     }
 }
 

@@ -9,5 +9,5 @@ cargo build --target x86_64-linux-android --lib --features android
 cargo build --target aarch64-linux-android --lib --features android
 cd ..
 
-cp rust-sdk/target/x86_64-linux-android/debug/libsonark_sdk.so app/src/main/jniLibs/x86_64/libsonark_sdk.so
-cp rust-sdk/target/aarch64-linux-android/debug/libsonark_sdk.so app/src/main/jniLibs/arm64-v8a/libsonark_sdk.so
+cp rust-sdk/target/x86_64-linux-android/debug/libuniffi_sonark_sdk.so app/src/main/jniLibs/x86_64/libuniffi_sonark_sdk.so
+cp rust-sdk/target/aarch64-linux-android/debug/libuniffi_sonark_sdk.so app/src/main/jniLibs/arm64-v8a/libuniffi_sonark_sdk.so

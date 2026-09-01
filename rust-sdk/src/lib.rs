@@ -23,20 +23,20 @@ pub struct SonarkEngine {
 #[uniffi::export]
 impl SonarkEngine {
     #[uniffi::constructor]
-    pub fn new(db_path: String) -> Self {
+    pub fn new(db_path: String) -> Result<Self, SonarkError> {
         #[cfg(target_os = "android")]
         {
             #[cfg(feature = "android")]
-            android_logger::init_once(
+            let _ = android_logger::init_once(
                 android_logger::Config::default()
                     .with_tag("SonarkSDK")
                     .with_max_level(log::LevelFilter::Debug),
             );
         }
 
-        Self {
-            core: Arc::new(CoreEngine::new(db_path)),
-        }
+        Ok(Self {
+            core: Arc::new(CoreEngine::new(db_path).map_err(|e| SonarkError::DatabaseError { message: e.to_string() })?),
+        })
     }
 
     pub fn set_observer(&self, observer: Box<dyn SonarkObserver>) {

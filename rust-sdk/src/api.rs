@@ -52,25 +52,25 @@ pub struct SonarkEngine {
 }
 
 impl SonarkEngine {
-    pub fn new(db_path: String) -> Self {
+    pub fn new(db_path: String) -> anyhow::Result<Self> {
         Self::with_base_url(db_path, "https://www.googleapis.com".to_string())
     }
 
-    pub fn with_base_url(db_path: String, base_url: String) -> Self {
+    pub fn with_base_url(db_path: String, base_url: String) -> anyhow::Result<Self> {
         let (handle, rt) = match tokio::runtime::Handle::try_current() {
             Ok(h) => (h, None),
             Err(_) => {
                 let rt = tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
                     .build()
-                    .expect("Failed to create Tokio runtime");
+                    .map_err(|e| anyhow::anyhow!("Failed to create Tokio runtime: {}", e))?;
                 (rt.handle().clone(), Some(rt))
             }
         };
 
-        let db = Database::open(&db_path).expect("Failed to open database");
+        let db = Database::open(&db_path).map_err(|e| anyhow::anyhow!("Failed to open database at {}: {}", db_path, e))?;
 
-        Self {
+        Ok(Self {
             download_manager: Arc::new(DownloadManager::new()),
             db: Arc::new(db),
             observer: Arc::new(StdMutex::new(None)),
@@ -78,7 +78,7 @@ impl SonarkEngine {
             base_url,
             runtime_handle: handle,
             _runtime: rt,
-        }
+        })
     }
 
     pub fn set_observer(&self, observer: Box<dyn SonarkObserver>) {
@@ -496,7 +496,8 @@ fn parse_filename(name: &str) -> (u32, u32, String) {
                 let split_idx = rest.find(|c: char| c == ' ' || c == '.' || c == '-');
                 if let Some(idx) = split_idx {
                     if let Ok(track) = rest[..idx].parse::<u32>() {
-                        return (disc, track, rest[idx+1..].trim().to_string());
+                        let title = rest[idx+1..].trim_start_matches(|c: char| c == ' ' || c == '-' || c == '.').trim().to_string();
+                        return (disc, track, title);
                     }
                 }
             }
@@ -506,11 +507,39 @@ fn parse_filename(name: &str) -> (u32, u32, String) {
     let split_idx = clean_name.find(|c: char| c == ' ' || c == '.' || c == '-');
     if let Some(idx) = split_idx {
         if let Ok(track) = clean_name[..idx].parse::<u32>() {
-            return (0, track, clean_name[idx+1..].trim().to_string());
+            let title = clean_name[idx+1..].trim_start_matches(|c: char| c == ' ' || c == '-' || c == '.').trim().to_string();
+            return (0, track, title);
         }
     }
 
     (0, 0, clean_name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_filename_multi_disc() {
+        let (disc, track, title) = parse_filename("1-01 - My Song.mp3");
+        assert_eq!(disc, 1);
+        assert_eq!(track, 1);
+        assert_eq!(title, "My Song");
+    }
+
+    #[test]
+    fn test_parse_filename_with_leading_dash_and_japanese() {
+        let (disc, track, title) = parse_filename("01 - 月陽-ツキアカリ-.mp3");
+        assert_eq!(disc, 0);
+        assert_eq!(track, 1);
+        assert_eq!(title, "月陽-ツキアカリ-");
+    }
+
+    #[test]
+    fn test_engine_init_invalid_path() {
+        let result = SonarkEngine::new("/invalid/path/db.sqlite".to_string());
+        assert!(result.is_err());
+    }
 }
 
 #[cfg(test)]
@@ -555,7 +584,7 @@ mod engine_integration_tests {
     fn test_real_google_drive_sync() {
         env_logger::builder().filter_level(log::LevelFilter::Debug).init();
         let token = get_test_token();
-        let engine = SonarkEngine::new(":memory:".to_string());
+        let engine = SonarkEngine::new(":memory:".to_string()).expect("Failed to create engine");
         let (sync_tx, sync_rx) = mpsc::channel();
         let (prog_tx, _) = mpsc::channel();
         let (err_tx, _) = mpsc::channel();
