@@ -10,14 +10,24 @@ import md.oak.sonark.data.model.DownloadStatus as KotlinStatus
 import md.oak.sonark.data.model.Album as KotlinAlbum
 import md.oak.sonark.data.model.Artist as KotlinArtist
 
-import md.oak.sonark.data.Dependencies
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+
+sealed class SyncStatus {
+    object Idle : SyncStatus()
+    object Syncing : SyncStatus()
+    data class Success(val songCount: Int, val timestamp: Long = System.currentTimeMillis()) : SyncStatus()
+    data class Error(val message: String) : SyncStatus()
+}
 
 class MusicRepository(
-    private val engine: SonarkEngine,
     private val settingsRepository: SettingsRepository,
+    private val engineFactory: (File) -> SonarkEngineInterface,
 ) {
     private val repositoryScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    
+    private val engineCache = ConcurrentHashMap<String, SonarkEngineInterface>()
+    private var currentEngine: SonarkEngineInterface? = null
     private var activeEmail: String? = null
 
     private val _songsFlow = MutableStateFlow<List<SyncSong>>(emptyList())
@@ -29,54 +39,108 @@ class MusicRepository(
     private val _artistsFlow = MutableStateFlow<List<KotlinArtist>>(emptyList())
     val artistsFlow: StateFlow<List<KotlinArtist>> = _artistsFlow.asStateFlow()
 
+    private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
+    val syncStatus: StateFlow<SyncStatus> = _syncStatus.asStateFlow()
+
+    val isSyncing: StateFlow<Boolean> = _syncStatus
+        .map { it is SyncStatus.Syncing }
+        .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), false)
+
+    private val observer = object : SonarkObserver {
+        override fun onDownloadProgress(progress: DownloadProgress) {
+            this@MusicRepository.onDownloadProgress(progress)
+        }
+
+        override fun onSyncComplete(songs: List<RustSong>) {
+            this@MusicRepository.onSyncComplete(songs)
+        }
+
+        override fun onError(message: String) {
+            this@MusicRepository.onSyncError(message)
+        }
+    }
+
     init {
-        refreshLocalCache()
-        
-        // Track active account
+        // Track active account and switch account database dynamically
         repositoryScope.launch {
             settingsRepository.googleAccountName.collect { email ->
                 activeEmail = email
+                val dbFile = if (email != null) {
+                    settingsRepository.getAccountDatabaseFile(email)
+                } else {
+                    settingsRepository.getLegacyDatabaseFile()
+                }
+                switchEngine(dbFile)
             }
         }
+    }
 
-        engine.setObserver(object : SonarkObserver {
-            override fun onDownloadProgress(progress: DownloadProgress) {
-                this@MusicRepository.onDownloadProgress(progress)
-            }
+    // Constructor overload for backward compatibility/testing with a fixed engine
+    constructor(
+        engine: SonarkEngineInterface,
+        settingsRepository: SettingsRepository
+    ) : this(
+        settingsRepository = settingsRepository,
+        engineFactory = { engine }
+    )
 
-            override fun onSyncComplete(songs: List<RustSong>) {
-                this@MusicRepository.onSyncComplete(songs)
-            }
-
-            override fun onError(message: String) {
-                android.util.Log.e("SonarkSDK", "uniffi_sonark_sdk: $message")
-            }
-        })
+    @Synchronized
+    private fun switchEngine(dbFile: File) {
+        val path = dbFile.absolutePath
+        android.util.Log.d("MusicRepository", "Switching to database: $path")
+        val engine = engineCache.getOrPut(path) {
+            engineFactory(dbFile)
+        }
+        currentEngine = engine
+        try {
+            engine.setObserver(observer)
+        } catch (e: Exception) {
+            android.util.Log.e("SonarkSDK", "Failed to set observer on engine", e)
+        }
+        refreshLocalCache()
     }
 
     fun getSyncSongsFlow(): Flow<List<SyncSong>> = songsFlow
     fun getAlbumsFlow(): Flow<List<KotlinAlbum>> = albumsFlow
     fun getArtistsFlow(): Flow<List<KotlinArtist>> = artistsFlow
 
-    private fun refreshLocalCache() {
-        val rustSongs = engine.getAllSongs()
-        _songsFlow.value = rustSongs.map { it.toSyncSong() }
+    fun refreshLocalCache() {
+        val engine = currentEngine ?: return
+        try {
+            val rustSongs = engine.getAllSongs()
+            _songsFlow.value = rustSongs.map { it.toSyncSong() }
 
-        val rustAlbums = engine.getAllAlbums()
-        _albumsFlow.value = rustAlbums.map { it.toKotlinAlbum() }
+            val rustAlbums = engine.getAllAlbums()
+            _albumsFlow.value = rustAlbums.map { it.toKotlinAlbum() }
 
-        val rustArtists = engine.getAllArtists()
-        _artistsFlow.value = rustArtists.map {
-            KotlinArtist(it.name, it.albumCount.toInt(), it.songCount.toInt())
+            val rustArtists = engine.getAllArtists()
+            _artistsFlow.value = rustArtists.map {
+                KotlinArtist(it.name, it.albumCount.toInt(), it.songCount.toInt())
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SonarkSDK", "Failed to refresh local cache", e)
         }
     }
 
     fun syncAll() {
-        engine.syncLibrary()
+        val engine = currentEngine ?: return
+        _syncStatus.value = SyncStatus.Syncing
+        try {
+            engine.syncLibrary()
+        } catch (e: Exception) {
+            android.util.Log.e("SonarkSDK", "Error starting syncLibrary", e)
+            _syncStatus.value = SyncStatus.Error(e.message ?: "Sync failed to start")
+        }
     }
 
     private fun onSyncComplete(rustSongs: List<RustSong>) {
         refreshLocalCache()
+        _syncStatus.value = SyncStatus.Success(rustSongs.size)
+    }
+
+    private fun onSyncError(message: String) {
+        android.util.Log.e("SonarkSDK", "uniffi_sonark_sdk error: $message")
+        _syncStatus.value = SyncStatus.Error(message)
     }
 
     private fun onDownloadProgress(progress: DownloadProgress) {
@@ -94,11 +158,11 @@ class MusicRepository(
     }
 
     fun resumeDownload(songId: String) {
+        val engine = currentEngine ?: return
         val song = _songsFlow.value.find { it.song.id == songId } ?: return
         val destination = song.localPath ?: run {
-            // Generate a default path if missing
             val musicDir = activeEmail?.let { settingsRepository.getAccountMusicDir(it) }
-                ?: Dependencies.context.getExternalFilesDir("music") 
+                ?: settingsRepository.getLegacyMusicDir()
                 ?: return
             
             if (!musicDir.exists()) musicDir.mkdirs()
@@ -120,6 +184,7 @@ class MusicRepository(
     fun resumeAllDownloads() {}
 
     fun fetchMetadata(songId: String) {
+        val engine = currentEngine ?: return
         val song = _songsFlow.value.find { it.song.id == songId } ?: return
         song.localPath?.let { path ->
             engine.scanLocalMetadata(songId, path)?.let {
@@ -129,19 +194,39 @@ class MusicRepository(
     }
 
     fun searchSongs(query: String): List<SyncSong> {
-        return engine.search(query).map { it.toSyncSong() }
+        val engine = currentEngine ?: return emptyList()
+        return try {
+            engine.search(query).map { it.toSyncSong() }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     fun getSongsForAlbum(albumId: String): List<SyncSong> {
-        return engine.getSongsForAlbum(albumId).map { it.toSyncSong() }
+        val engine = currentEngine ?: return emptyList()
+        return try {
+            engine.getSongsForAlbum(albumId).map { it.toSyncSong() }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     fun getSongsForArtist(artistName: String): List<SyncSong> {
-        return engine.getSongsForArtist(artistName).map { it.toSyncSong() }
+        val engine = currentEngine ?: return emptyList()
+        return try {
+            engine.getSongsForArtist(artistName).map { it.toSyncSong() }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
-    fun getLibraryStats(): uniffi.sonark_sdk.LibraryStats {
-        return engine.getLibraryStats()
+    fun getLibraryStats(): LibraryStats? {
+        val engine = currentEngine ?: return null
+        return try {
+            engine.getLibraryStats()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun getProvider(id: String): Any? = null 

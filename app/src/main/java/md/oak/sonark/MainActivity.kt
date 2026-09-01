@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
                 val otherAccounts by viewModel.otherAccounts.collectAsStateWithLifecycle()
                 val storageQuota by viewModel.storageQuota.collectAsStateWithLifecycle()
                 val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
+                val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
 
                 val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
                 val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
@@ -291,7 +292,7 @@ class MainActivity : ComponentActivity() {
                                 storageQuota = storageQuota,
                                 downloadQueueSize = queueSize,
                                 sortOrder = sortOrder,
-                                isRefreshing = uiState == UIState.LOADING,
+                                isRefreshing = isSyncing,
                                 onSortOrderChange = { viewModel.setSortOrder(it) },
                                 onRefresh = { viewModel.loadSongs() },
                                 onQueueClick = {

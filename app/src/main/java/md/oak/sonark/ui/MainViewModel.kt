@@ -13,6 +13,7 @@ import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.repository.AccountRepository
 import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.data.repository.SettingsRepository
+import md.oak.sonark.data.repository.SyncStatus
 import md.oak.sonark.data.repository.UserAccount
 import md.oak.sonark.ui.model.AlbumDownloadItem
 
@@ -29,9 +30,6 @@ class MainViewModel(
     private val accountRepository: AccountRepository,
     private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
-
-    private val _uiState = MutableStateFlow(UIState.LOADING)
-    val uiState: StateFlow<UIState> = _uiState.asStateFlow()
 
     val accounts = accountRepository.accounts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val storageQuota = accountRepository.storageQuota.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -74,6 +72,29 @@ class MainViewModel(
         .map { artists ->
             artists.sortedBy { it.name.lowercase() }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val syncStatus: StateFlow<SyncStatus> = repository.syncStatus
+    val isSyncing: StateFlow<Boolean> = repository.isSyncing
+
+    val uiState: StateFlow<UIState> = combine(
+        albums,
+        repository.syncStatus,
+        activeAccount
+    ) { albums, syncStatus, activeAccount ->
+        if (activeAccount == null) {
+            UIState.UNAUTHENTICATED
+        } else when (syncStatus) {
+            is SyncStatus.Syncing -> {
+                if (albums.isEmpty()) UIState.LOADING else UIState.SUCCESS
+            }
+            is SyncStatus.Error -> {
+                if (albums.isEmpty()) UIState.ERROR else UIState.SUCCESS
+            }
+            else -> {
+                if (albums.isEmpty()) UIState.EMPTY else UIState.SUCCESS
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UIState.LOADING)
 
     val downloadQueue: StateFlow<List<AlbumDownloadItem>> = songs
         .map { allSyncSongs ->
@@ -136,32 +157,17 @@ class MainViewModel(
 
     init {
         loadSongs()
-        viewModelScope.launch {
-            albums.collect { 
-                if (it.isNotEmpty() && (_uiState.value == UIState.LOADING || _uiState.value == UIState.EMPTY)) {
-                    _uiState.value = UIState.SUCCESS
-                }
-            }
-        }
     }
 
     fun loadSongs() {
         viewModelScope.launch {
-            if (albums.value.isEmpty()) {
-                _uiState.value = UIState.LOADING
-            }
             refreshAccountInfo()
-            
             try {
                 repository.syncAll()
-                _uiState.value = UIState.SUCCESS
                 updateActiveAccountError(false)
             } catch (e: Exception) {
-                Log.e("MainViewModel", "Sync failed", e)
+                Log.e("MainViewModel", "Sync failed to start", e)
                 updateActiveAccountError(true)
-                if (albums.value.isEmpty()) {
-                    _uiState.value = UIState.ERROR
-                }
             }
         }
     }
@@ -185,7 +191,7 @@ class MainViewModel(
     }
 
     fun setUnauthenticated() {
-        _uiState.value = UIState.UNAUTHENTICATED
+        // Unauthenticated handled reactively via activeAccount == null in uiState combine block
     }
 
     fun setSortOrder(order: SortOrder) {

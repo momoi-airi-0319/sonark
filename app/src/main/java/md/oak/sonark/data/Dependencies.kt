@@ -6,10 +6,12 @@ import md.oak.sonark.data.repository.AccountRepository
 import md.oak.sonark.data.repository.MusicRepository
 import md.oak.sonark.data.repository.SettingsRepository
 import uniffi.sonark_sdk.SonarkEngine
+import uniffi.sonark_sdk.SonarkEngineInterface
 import uniffi.sonark_sdk.AuthProvider
 
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
+import java.io.File
 
 object Dependencies {
     lateinit var context: Context
@@ -17,7 +19,30 @@ object Dependencies {
     lateinit var settingsRepository: SettingsRepository
     lateinit var accountRepository: AccountRepository
     lateinit var authManager: AuthManager
-    lateinit var sonarkEngine: SonarkEngine
+
+    fun createEngine(dbFile: File): SonarkEngineInterface {
+        dbFile.parentFile?.mkdirs()
+        val engine = SonarkEngine(dbFile.absolutePath)
+        
+        // Bridge Auth to Rust
+        engine.setAuthProvider(object : AuthProvider {
+            override fun getAccessToken(): String {
+                val existingToken = authManager.getLastKnownToken()
+                if (existingToken != null) return existingToken
+
+                return runBlocking {
+                    val email = settingsRepository.googleAccountName.firstOrNull()
+                    if (email != null) {
+                        android.util.Log.d("SonarkSDK", "Token missing, attempting silent sign-in for $email")
+                        authManager.silentSignIn(email)
+                    } else {
+                        null
+                    }
+                } ?: ""
+            }
+        })
+        return engine
+    }
 
     fun init(context: Context) {
         this.context = context.applicationContext
@@ -27,45 +52,15 @@ object Dependencies {
         if (!::authManager.isInitialized) {
             authManager = AuthManager(context.applicationContext)
         }
-        
-        if (!::sonarkEngine.isInitialized) {
-            System.loadLibrary("uniffi_sonark_sdk")
-            val dbFile = context.getDatabasePath("sonark_v2.db")
-            dbFile.parentFile?.mkdirs()
-            try {
-                sonarkEngine = SonarkEngine(dbFile.absolutePath)
-                
-                // Bridge Auth to Rust
-                sonarkEngine.setAuthProvider(object : AuthProvider {
-                    override fun getAccessToken(): String {
-                        // Try to get existing token
-                        val existingToken = authManager.getLastKnownToken()
-                        if (existingToken != null) return existingToken
-
-                        // If missing, try silent sign-in
-                        return runBlocking {
-                            val email = settingsRepository.googleAccountName.firstOrNull()
-                            if (email != null) {
-                                android.util.Log.d("SonarkSDK", "Token missing, attempting silent sign-in for $email")
-                                authManager.silentSignIn(email)
-                            } else {
-                                null
-                            }
-                        } ?: ""
-                    }
-                })
-            } catch (e: Exception) {
-                android.util.Log.e("SonarkSDK", "Failed to initialize SonarkEngine", e)
-                // We should handle this gracefully in the UI
-            }
-        }
-
         if (!::accountRepository.isInitialized) {
             accountRepository = AccountRepository(settingsRepository)
         }
-        
         if (!::musicRepository.isInitialized) {
-            musicRepository = MusicRepository(sonarkEngine, settingsRepository)
+            System.loadLibrary("uniffi_sonark_sdk")
+            musicRepository = MusicRepository(
+                settingsRepository = settingsRepository,
+                engineFactory = { dbFile -> createEngine(dbFile) }
+            )
         }
     }
 }
