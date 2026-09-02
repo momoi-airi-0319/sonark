@@ -39,7 +39,6 @@ import md.oak.sonark.ui.MainViewModel
 import md.oak.sonark.ui.PlaybackViewModel
 import md.oak.sonark.ui.SearchViewModel
 import md.oak.sonark.ui.SettingsViewModel
-import md.oak.sonark.ui.UIState
 import md.oak.sonark.ui.components.DownloadQueueBottomSheet
 import md.oak.sonark.ui.components.FloatingNavItem
 import md.oak.sonark.ui.screens.library.AccountPopDialog
@@ -50,27 +49,27 @@ import md.oak.sonark.ui.theme.SonarkTheme
 fun LoginScreen(onSignInClick: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
         ) {
             Icon(
                 imageVector = Icons.Default.LibraryMusic,
                 contentDescription = "Sonark Logo",
                 modifier = Modifier.size(120.dp),
-                tint = MaterialTheme.colorScheme.primary
+                tint = MaterialTheme.colorScheme.primary,
             )
             Spacer(modifier = Modifier.height(32.dp))
             Text(
                 text = "Sonark",
-                style = MaterialTheme.typography.headlineLarge
+                style = MaterialTheme.typography.headlineLarge,
             )
             Spacer(modifier = Modifier.height(48.dp))
             Button(
                 onClick = onSignInClick,
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(16.dp),
             ) {
                 Text("Sign in with Google")
             }
@@ -105,7 +104,6 @@ class MainActivity : ComponentActivity() {
                 val coroutineScope = rememberCoroutineScope()
                 val downloadQueueState by viewModel.downloadQueue.collectAsStateWithLifecycle()
                 val googleAccountName by settingsViewModel.googleAccountName.collectAsStateWithLifecycle()
-                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val accounts by viewModel.accounts.collectAsStateWithLifecycle()
                 val activeAccount by viewModel.activeAccount.collectAsStateWithLifecycle()
                 val otherAccounts by viewModel.otherAccounts.collectAsStateWithLifecycle()
@@ -119,7 +117,7 @@ class MainActivity : ComponentActivity() {
                 val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
 
                 val authLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.StartIntentSenderForResult()
+                    ActivityResultContracts.StartIntentSenderForResult(),
                 ) { result ->
                     try {
                         val authResult = authManager.getAuthorizationClient()
@@ -159,8 +157,8 @@ class MainActivity : ComponentActivity() {
                             name = credential.displayName ?: email.split("@").first(),
                             email = email,
                             profileImageUrl = credential.profilePictureUri?.toString(),
-                            isLoggedIn = true
-                        )
+                            isLoggedIn = true,
+                        ),
                     )
                     performAuth(email)
                 }
@@ -223,27 +221,25 @@ class MainActivity : ComponentActivity() {
                     searchViewModel = searchViewModel,
                     playbackViewModel = playbackViewModel,
                     settingsViewModel = settingsViewModel,
-                    navigator = navigator
+                    navigator = navigator,
                 )
 
                 val showLoginScreen = accounts.isEmpty() || accounts.all { !it.isLoggedIn }
 
                 LaunchedEffect(accounts, googleAccountName) {
-                    if (googleAccountName == null && accounts.any { it.isLoggedIn }) {
+                    if ((googleAccountName == null) && accounts.any { it.isLoggedIn }) {
                         val firstLoggedIn = accounts.first { it.isLoggedIn }
                         settingsViewModel.setGoogleAccount(firstLoggedIn.email)
                     }
                 }
 
                 if (showLoginScreen) {
-                    LoginScreen(
-                        onSignInClick = {
-                            startSignIn()
-                        }
-                    )
+                    LoginScreen {
+                        startSignIn()
+                    }
                 } else {
                     Scaffold(
-                        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     ) { padding ->
                         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                             NavDisplay(
@@ -263,11 +259,10 @@ class MainActivity : ComponentActivity() {
                                     progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                                     activeAccount = activeAccount,
                                     onPlayerClick = { navigator.navigate(PlayerKey) },
-                                    onAccountClick = { showAccountDialog = true }
-                                )
+                                ) { showAccountDialog = true }
 
                                 Box(
-                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                    modifier = Modifier.align(Alignment.BottomCenter),
                                 ) {
                                     SonarkBottomBar(navigationState, navigator)
                                 }
@@ -281,8 +276,7 @@ class MainActivity : ComponentActivity() {
                                 onResumeAll = { viewModel.resumeAllDownloads() },
                                 onPauseSong = { viewModel.pauseDownload(it) },
                                 onResumeSong = { viewModel.resumeDownload(it) },
-                                onDismissRequest = { showQueue = false }
-                            )
+                            ) { showQueue = false }
                         }
 
                         if (showAccountDialog) {
@@ -318,7 +312,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onAccountClick = { account ->
                                     showAccountDialog = false
-                                    if (account.email != activeAccount?.email || account.hasConnectionError) {
+                                    if ((account.email != activeAccount?.email) || account.hasConnectionError) {
                                         if (!account.isLoggedIn) {
                                             startSignIn()
                                         } else {
@@ -342,8 +336,7 @@ class MainActivity : ComponentActivity() {
                                     val intent = Intent(Intent.ACTION_VIEW, url.toUri())
                                     this@MainActivity.startActivity(intent)
                                 },
-                                onDismissRequest = { showAccountDialog = false }
-                            )
+                            ) { showAccountDialog = false }
                         }
                     }
                 }
@@ -386,7 +379,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun SonarkBottomBar(
         navigationState: NavigationState,
-        navigator: Navigator
+        navigator: Navigator,
     ) {
         Row(
             modifier = Modifier
@@ -394,30 +387,30 @@ class MainActivity : ComponentActivity() {
                 .navigationBarsPadding()
                 .padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
                 shape = CircleShape,
                 tonalElevation = 6.dp,
                 shadowElevation = 2.dp,
-                modifier = Modifier.height(52.dp)
+                modifier = Modifier.height(52.dp),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     FloatingNavItem(
                         selected = navigationState.topLevelRoute == HomeKey,
                         onClick = { navigator.navigate(HomeKey) },
                         icon = Icons.Default.Home,
-                        label = "Home"
+                        label = "Home",
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     FloatingNavItem(
                         selected = navigationState.topLevelRoute == LibraryKey,
                         onClick = { navigator.navigate(LibraryKey) },
                         icon = Icons.Default.LibraryMusic,
-                        label = "Library"
+                        label = "Library",
                     )
                 }
             }
@@ -428,17 +421,17 @@ class MainActivity : ComponentActivity() {
                 shape = CircleShape,
                 tonalElevation = 6.dp,
                 shadowElevation = 2.dp,
-                modifier = Modifier.size(52.dp)
+                modifier = Modifier.size(52.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     IconButton(
                         onClick = { navigator.navigate(SearchKey) },
-                        modifier = Modifier.size(52.dp)
+                        modifier = Modifier.size(52.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

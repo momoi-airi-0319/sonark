@@ -43,7 +43,7 @@ pub fn parse_cue(content: &str) -> Option<CueSheet> {
             }
         } else if trimmed.starts_with("TRACK") {
             // Save previous track if any
-            push_track(&mut tracks, &mut current_track_num, &mut current_track_title, &mut current_track_artist, 0);
+            push_track(&mut tracks, &mut current_track_num, &mut current_track_title, &current_track_artist, 0);
 
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
             if parts.len() >= 2 {
@@ -53,7 +53,7 @@ pub fn parse_cue(content: &str) -> Option<CueSheet> {
         } else if trimmed.starts_with("INDEX 01") {
             let time_str = trimmed.split_whitespace().last().unwrap_or("00:00:00");
             let start_ms = parse_time_to_ms(time_str);
-            push_track(&mut tracks, &mut current_track_num, &mut current_track_title, &mut current_track_artist, start_ms);
+            push_track(&mut tracks, &mut current_track_num, &mut current_track_title, &current_track_artist, start_ms);
         }
     }
 
@@ -67,11 +67,11 @@ pub fn parse_cue(content: &str) -> Option<CueSheet> {
     })
 }
 
-fn push_track(tracks: &mut Vec<CueTrack>, num: &mut Option<u32>, title: &mut String, artist: &mut String, start: u64) {
+fn push_track(tracks: &mut Vec<CueTrack>, num: &mut Option<u32>, title: &mut String, artist: &str, start: u64) {
     if let Some(n) = *num {
         tracks.push(CueTrack {
             title: title.clone(),
-            artist: artist.clone(),
+            artist: artist.to_string(),
             track_number: n,
             start_ms: start,
         });

@@ -80,7 +80,7 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
     let cli = Cli::parse();
 
-    let engine = SonarkEngine::new(cli.db);
+    let engine = SonarkEngine::new(cli.db)?;
 
     let (sync_tx, sync_rx) = mpsc::channel();
     engine.set_observer(Box::new(CliObserver { sync_tx }));

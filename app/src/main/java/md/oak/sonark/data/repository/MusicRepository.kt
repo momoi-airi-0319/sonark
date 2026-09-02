@@ -44,7 +44,7 @@ class MusicRepository(
 
     val isSyncing: StateFlow<Boolean> = _syncStatus
         .map { it is SyncStatus.Syncing }
-        .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), false)
+        .stateIn(repositoryScope, SharingStarted.WhileSubscribed(5000), initialValue = false)
 
     private val observer = object : SonarkObserver {
         override fun onDownloadProgress(progress: DownloadProgress) {
@@ -78,7 +78,7 @@ class MusicRepository(
     // Constructor overload for backward compatibility/testing with a fixed engine
     constructor(
         engine: SonarkEngineInterface,
-        settingsRepository: SettingsRepository
+        settingsRepository: SettingsRepository,
     ) : this(
         settingsRepository = settingsRepository,
         engineFactory = { engine }
@@ -150,7 +150,7 @@ class MusicRepository(
                     it.copy(
                         downloadStatus = KotlinStatus.DOWNLOADING,
                         downloadedBytes = progress.downloadedBytes.toLong(),
-                        downloadProgress = if (progress.totalBytes > 0uL) (progress.downloadedBytes * 100uL / progress.totalBytes).toInt() else 0
+                        downloadProgress = if (progress.totalBytes > 0uL) ((progress.downloadedBytes * 100uL) / progress.totalBytes).toInt() else 0
                     )
                 } else it
             }
@@ -172,8 +172,8 @@ class MusicRepository(
         engine.startDownload(songId, song.data, destination)
     }
 
-    fun pauseDownload(songId: String) {}
-    fun pauseAlbumDownload(albumId: String) {}
+    fun pauseDownload(@Suppress("UNUSED_PARAMETER") songId: String) {}
+    fun pauseAlbumDownload(@Suppress("UNUSED_PARAMETER") albumId: String) {}
 
     fun resumeAlbumDownload(albumId: String) {
         _songsFlow.value.filter { it.albumId == albumId && it.downloadStatus != KotlinStatus.COMPLETED }
@@ -197,7 +197,7 @@ class MusicRepository(
         val engine = currentEngine ?: return emptyList()
         return try {
             engine.search(query).map { it.toSyncSong() }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -220,16 +220,7 @@ class MusicRepository(
         }
     }
 
-    fun getLibraryStats(): LibraryStats? {
-        val engine = currentEngine ?: return null
-        return try {
-            engine.getLibraryStats()
-        } catch (e: Exception) {
-            null
-        }
-    }
 
-    fun getProvider(id: String): Any? = null 
 
     private fun RustSong.toSyncSong(): SyncSong {
         return SyncSong(

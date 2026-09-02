@@ -36,14 +36,15 @@ class MainViewModel(
 
     val activeAccount: StateFlow<UserAccount?> = combine(
         accountRepository.accounts,
-        settingsRepository.googleAccountName
+        settingsRepository.googleAccountName,
     ) { accounts, activeEmail ->
-        if (activeEmail == null) null
-        else accounts.find { it.email.equals(activeEmail, ignoreCase = true) }
-            ?: UserAccount(
-                name = activeEmail.split("@").firstOrNull() ?: "User",
-                email = activeEmail,
-            )
+        activeEmail?.let { email ->
+            accounts.find { it.email.equals(email, ignoreCase = true) }
+                ?: UserAccount(
+                    name = email.split("@").firstOrNull() ?: "User",
+                    email = email,
+                )
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val otherAccounts: StateFlow<List<UserAccount>> = combine(
@@ -78,7 +79,7 @@ class MainViewModel(
 
     val uiState: StateFlow<UIState> = combine(
         albums,
-        repository.syncStatus,
+        syncStatus,
         activeAccount
     ) { albums, syncStatus, activeAccount ->
         if (activeAccount == null) {
@@ -164,10 +165,10 @@ class MainViewModel(
             refreshAccountInfo()
             try {
                 repository.syncAll()
-                updateActiveAccountError(false)
+                updateActiveAccountError(hasError = false)
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Sync failed to start", e)
-                updateActiveAccountError(true)
+                updateActiveAccountError(hasError = true)
             }
         }
     }
@@ -183,9 +184,9 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 accountRepository.refreshQuota()
-                updateActiveAccountError(false)
-            } catch (e: Exception) {
-                updateActiveAccountError(true)
+                updateActiveAccountError(hasError = false)
+            } catch (_: Exception) {
+                updateActiveAccountError(hasError = true)
             }
         }
     }

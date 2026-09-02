@@ -30,7 +30,7 @@ class AccountRepository(private val settingsRepository: SettingsRepository) {
 
     val accounts: Flow<List<UserAccount>> = settingsRepository.storedAccounts
 
-    suspend fun refreshQuota(driveService: Any? = null) {
+    suspend fun refreshQuota(@Suppress("UNUSED_PARAMETER") driveService: Any? = null) {
         // Rust SDK will eventually handle this. 
         // For now, we calculate local usage to provide some feedback.
         val email = settingsRepository.googleAccountName.firstOrNull() ?: return

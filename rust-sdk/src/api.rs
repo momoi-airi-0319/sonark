@@ -30,6 +30,12 @@ pub struct DownloadManager {
 
 impl DownloadManager {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for DownloadManager {
+    fn default() -> Self {
         Self {
             client: Client::builder()
                 .user_agent("Sonark-SDK/0.1.0")
@@ -493,10 +499,10 @@ fn parse_filename(name: &str) -> (u32, u32, String) {
             let disc_part = &clean_name[..dash_idx];
             if let Ok(disc) = disc_part.parse::<u32>() {
                 let rest = clean_name[dash_idx+1..].trim();
-                let split_idx = rest.find(|c: char| c == ' ' || c == '.' || c == '-');
+                let split_idx = rest.find([' ', '.', '-']);
                 if let Some(idx) = split_idx {
                     if let Ok(track) = rest[..idx].parse::<u32>() {
-                        let title = rest[idx+1..].trim_start_matches(|c: char| c == ' ' || c == '-' || c == '.').trim().to_string();
+                        let title = rest[idx+1..].trim_start_matches([' ', '-', '.']).trim().to_string();
                         return (disc, track, title);
                     }
                 }
@@ -504,10 +510,10 @@ fn parse_filename(name: &str) -> (u32, u32, String) {
         }
     }
 
-    let split_idx = clean_name.find(|c: char| c == ' ' || c == '.' || c == '-');
+    let split_idx = clean_name.find([' ', '.', '-']);
     if let Some(idx) = split_idx {
         if let Ok(track) = clean_name[..idx].parse::<u32>() {
-            let title = clean_name[idx+1..].trim_start_matches(|c: char| c == ' ' || c == '-' || c == '.').trim().to_string();
+            let title = clean_name[idx+1..].trim_start_matches([' ', '-', '.']).trim().to_string();
             return (0, track, title);
         }
     }

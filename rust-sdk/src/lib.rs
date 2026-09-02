@@ -91,7 +91,5 @@ impl SonarkEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    // Move existing tests to a separate integration test file or keep them here if they are unit tests.
-    // For now, I'll keep the core tests in src/api.rs or models/db if they are unit tests.
+    // Unit tests will go here
 }

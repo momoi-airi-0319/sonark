@@ -30,3 +30,8 @@ rust-sdk/Cargo.lock
 **/task.artifact.md
 **/walkthrough.artifact.md
 **/implementation_plan.artifact.md
+
+# Media and DB
+*.mp3
+*.db
+token.txt
