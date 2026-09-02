@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "uniffi.sonark_sdk"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 33
@@ -13,8 +13,8 @@ android {
     // Explicitly handle Kotlin for AGP compatibility
     sourceSets {
         getByName("main") {
-            java.srcDirs("src/main/java")
-            jniLibs.srcDirs("src/main/jniLibs")
+            java.directories.add("src/main/java")
+            jniLibs.directories.add("src/main/jniLibs")
         }
     }
 }
