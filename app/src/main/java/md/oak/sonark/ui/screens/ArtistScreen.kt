@@ -38,10 +38,6 @@ fun ArtistScreen(
     BackHandler(onBack = onBackClick)
     var showDetails by remember { mutableStateOf(value = false) }
 
-    LaunchedEffect(key1 = featuredSongs) {
-        onDownloadSongs(featuredSongs)
-    }
-
     val songsToLoadMetadata = remember(featuredSongs) {
         featuredSongs.filter { (it.localPath != null) && (it.song.artist == "Unknown Artist") }
     }

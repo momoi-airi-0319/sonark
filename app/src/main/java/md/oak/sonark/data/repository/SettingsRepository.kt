@@ -4,7 +4,9 @@ import android.content.Context
 import android.os.Environment
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +21,8 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 class SettingsRepository(private val context: Context) {
     private val googleAccountNameKey = stringPreferencesKey("google_account_name")
     private val storedAccountsKey = stringPreferencesKey("stored_accounts")
+    private val maxConcurrentDownloadsKey = intPreferencesKey("max_concurrent_downloads")
+    private val pauseOnMeteredNetworkKey = booleanPreferencesKey("pause_on_metered_network")
 
     fun getAccountMusicDir(email: String): File {
         val accountHash = email.hashCode().toString()
@@ -52,6 +56,28 @@ class SettingsRepository(private val context: Context) {
                 emptyList()
             }
         }.distinctUntilChanged()
+
+    val maxConcurrentDownloads: Flow<Int> = context.dataStore.data
+        .map { preferences ->
+            preferences[maxConcurrentDownloadsKey] ?: 6
+        }.distinctUntilChanged()
+
+    val pauseOnMeteredNetwork: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            preferences[pauseOnMeteredNetworkKey] ?: true
+        }.distinctUntilChanged()
+
+    suspend fun setMaxConcurrentDownloads(count: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[maxConcurrentDownloadsKey] = count.coerceIn(1, 16)
+        }
+    }
+
+    suspend fun setPauseOnMeteredNetwork(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[pauseOnMeteredNetworkKey] = enabled
+        }
+    }
 
     suspend fun setGoogleAccountName(name: String?) {
         context.dataStore.edit { preferences ->

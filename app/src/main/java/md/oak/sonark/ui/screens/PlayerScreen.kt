@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -19,6 +20,7 @@ import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.data.model.SyncSong
+import md.oak.sonark.ui.PlaybackMode
 import md.oak.sonark.ui.components.WavySlider
 import md.oak.sonark.ui.utils.Formatter
 
@@ -37,6 +39,9 @@ fun PlayerScreen(
     duration: Long,
     shuffleEnabled: Boolean,
     repeatMode: Int,
+    playbackMode: PlaybackMode = PlaybackMode.LOCAL,
+    targetAlbumMode: PlaybackMode? = null,
+    onSwitchPlaybackMode: () -> Unit = {},
     onTogglePlayback: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSkipNext: () -> Unit,
@@ -91,6 +96,63 @@ fun PlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (song != null) {
+                // Warning Banner for Streaming Mode
+                if (playbackMode == PlaybackMode.STREAMING) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        color = Color(0xFFFFF3CD),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "⚠️ 流媒体模式（专辑未完全下载，播放可能会消耗流量）",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF856404)
+                            )
+                        }
+                    }
+                }
+
+                // Sync Mode Switch Button when state changes
+                if (targetAlbumMode != null && targetAlbumMode != playbackMode) {
+                    Surface(
+                        onClick = onSwitchPlaybackMode,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            val text = if (targetAlbumMode == PlaybackMode.LOCAL) {
+                                "专辑已完全下载，点击切换至本地模式"
+                            } else {
+                                "全辑不完整，点击切换至流媒体模式"
+                            }
+                            Text(
+                                text = text,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.Sync,
+                                contentDescription = "Switch Mode",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
                 val metadata = song.song
                 Spacer(modifier = Modifier.weight(1f))
 

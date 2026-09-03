@@ -3,6 +3,8 @@ package md.oak.sonark.ui
 import android.app.Application
 import android.content.ComponentName
 import android.net.Uri
+import android.util.Log
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -19,13 +21,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.model.AlbumType
+import md.oak.sonark.data.model.DownloadStatus
+import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.playback.PlaybackService
-import androidx.core.net.toUri
+import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 
-import android.util.Log
+enum class PlaybackMode {
+    LOCAL,     // 全部曲目已全辑下载，使用本地离线文件播放
+    STREAMING  // 未全辑下载，以流媒体模式播放整张专辑
+}
 
 @UnstableApi
 class PlaybackViewModel(application: Application) : AndroidViewModel(application) {
@@ -52,7 +58,14 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
     private val _repeatMode = MutableStateFlow(value = Player.REPEAT_MODE_OFF)
     val repeatMode: StateFlow<Int> = _repeatMode.asStateFlow()
 
+    private val _currentPlaybackMode = MutableStateFlow(PlaybackMode.LOCAL)
+    val currentPlaybackMode: StateFlow<PlaybackMode> = _currentPlaybackMode.asStateFlow()
+
+    private val _targetAlbumMode = MutableStateFlow<PlaybackMode?>(null)
+    val targetAlbumMode: StateFlow<PlaybackMode?> = _targetAlbumMode.asStateFlow()
+
     private val _queue = MutableStateFlow<List<SyncSong>>(value = emptyList())
+    private val _currentAlbumSongs = MutableStateFlow<List<SyncSong>>(emptyList())
 
     private var progressJob: Job? = null
     private var lastSeekTime = 0L
@@ -115,51 +128,85 @@ class PlaybackViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun playQueue(songs: List<SyncSong>, startIndex: Int = 0) {
-        Log.e(TAG, "playQueue: songs size=${songs.size}, startIndex=$startIndex")
-        val controller = this.controller ?: run {
-            Log.e(TAG, "playQueue: controller is null")
-            return
+    fun isAlbumFullyDownloaded(albumSongs: List<SyncSong>): Boolean {
+        if (albumSongs.isEmpty()) return false
+        return albumSongs.all { song ->
+            song.localPath != null &&
+            File(song.localPath).exists() &&
+            song.downloadStatus == DownloadStatus.COMPLETED
         }
-        
-        // Allow playing if it has a local path OR a data URL (streaming)
-        val playableSongs = songs.filter { it.localPath != null || it.data.isNotEmpty() }
-        Log.e(TAG, "playQueue: playableSongs size=${playableSongs.size}")
-        if (playableSongs.isEmpty()) return
+    }
 
-        val targetSong = songs.getOrNull(startIndex)
-        val newStartIndex = playableSongs.indexOfFirst { it.song.id == targetSong?.song?.id }.coerceAtLeast(0)
-        val actualTargetSong = playableSongs.getOrNull(newStartIndex)
+    fun updateCurrentAlbumSongs(allLibrarySongs: List<SyncSong>) {
+        val currentAlbumId = _currentSong.value?.albumId ?: return
+        val albumSongs = allLibrarySongs.filter { it.albumId == currentAlbumId }
+        if (albumSongs.isNotEmpty()) {
+            _currentAlbumSongs.value = albumSongs
+            val latestMode = if (isAlbumFullyDownloaded(albumSongs)) PlaybackMode.LOCAL else PlaybackMode.STREAMING
+            _targetAlbumMode.value = latestMode
+        }
+    }
 
-        if (isSameQueue(playableSongs) && actualTargetSong?.song?.id == _currentSong.value?.song?.id) {
-            if (!controller.isPlaying) controller.play()
-            return
+    fun playAlbum(albumSongs: List<SyncSong>, startIndex: Int = 0) {
+        val controller = this.controller ?: return
+        if (albumSongs.isEmpty()) return
+
+        val sortedAlbumSongs = albumSongs.sortedWith(
+            compareBy<SyncSong> { it.song.discNumber }.thenBy { it.song.trackNumber }
+        )
+
+        val isDownloaded = isAlbumFullyDownloaded(sortedAlbumSongs)
+        val mode = if (isDownloaded) PlaybackMode.LOCAL else PlaybackMode.STREAMING
+
+        _currentPlaybackMode.value = mode
+        _targetAlbumMode.value = mode
+        _currentAlbumSongs.value = sortedAlbumSongs
+        _queue.value = sortedAlbumSongs
+
+        val targetSong = albumSongs.getOrNull(startIndex)
+        val actualIndex = sortedAlbumSongs.indexOfFirst { it.song.id == targetSong?.song?.id }.coerceAtLeast(0)
+        val actualTargetSong = sortedAlbumSongs.getOrNull(actualIndex)
+
+        val mediaItems = sortedAlbumSongs.mapIndexed { index, syncSong ->
+            createMediaItemForMode(syncSong, sortedAlbumSongs.getOrNull(index + 1), mode)
         }
 
-        _queue.value = playableSongs
-        val mediaItems = playableSongs.mapIndexed { index, syncSong -> 
-            createMediaItem(syncSong, playableSongs.getOrNull(index + 1)) 
-        }
-
-        val startPosition = if (actualTargetSong?.song?.id == _currentSong.value?.song?.id) controller.currentPosition else 0L
-        controller.setMediaItems(mediaItems, newStartIndex, startPosition)
+        controller.setMediaItems(mediaItems, actualIndex, 0L)
         controller.prepare()
         controller.play()
         _currentSong.value = actualTargetSong
     }
 
-    private fun isSameQueue(newQueue: List<SyncSong>): Boolean {
-        return _queue.value.size == newQueue.size && 
-               _queue.value.zip(newQueue).all { it.first.song.id == it.second.song.id }
+    fun switchPlaybackMode() {
+        val targetMode = _targetAlbumMode.value ?: return
+        if (targetMode == _currentPlaybackMode.value) return
+        val controller = this.controller ?: return
+        val albumSongs = _currentAlbumSongs.value
+        if (albumSongs.isEmpty()) return
+
+        val currentSongId = _currentSong.value?.song?.id
+        val currentIndex = albumSongs.indexOfFirst { it.song.id == currentSongId }.coerceAtLeast(0)
+        val currentPosition = controller.currentPosition
+        val wasPlaying = controller.isPlaying
+
+        _currentPlaybackMode.value = targetMode
+        _queue.value = albumSongs
+
+        val mediaItems = albumSongs.mapIndexed { index, syncSong ->
+            createMediaItemForMode(syncSong, albumSongs.getOrNull(index + 1), targetMode)
+        }
+
+        controller.setMediaItems(mediaItems, currentIndex, currentPosition)
+        controller.prepare()
+        if (wasPlaying) controller.play()
     }
 
-    private fun createMediaItem(syncSong: SyncSong, nextSong: SyncSong?): MediaItem {
-        val uri = if (syncSong.localPath != null && java.io.File(syncSong.localPath).exists()) {
-            Uri.fromFile(java.io.File(syncSong.localPath))
+    private fun createMediaItemForMode(syncSong: SyncSong, nextSong: SyncSong?, mode: PlaybackMode): MediaItem {
+        val uri = if (mode == PlaybackMode.LOCAL && syncSong.localPath != null && File(syncSong.localPath).exists()) {
+            Uri.fromFile(File(syncSong.localPath))
         } else {
             syncSong.data.toUri()
         }
-        Log.d(TAG, "createMediaItem: title=${syncSong.song.title}, uri=$uri")
         
         val duration = when {
             syncSong.song.duration > 0 -> syncSong.song.duration

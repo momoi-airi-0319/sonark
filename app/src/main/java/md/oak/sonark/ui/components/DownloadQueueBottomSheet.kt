@@ -117,8 +117,9 @@ private fun AlbumDownloadTaskItem(
             supportingContent = {
                 Column {
                     Text(
-                        text = "${item.artist} • ${item.totalSongs} tracks",
-                        style = MaterialTheme.typography.bodySmall
+                        text = "${item.artist} • ${item.totalSongs} 首曲目 • ${item.getStatusText()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (item.isUserPaused || item.pauseReason != null) MaterialTheme.colorScheme.error.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     LinearProgressIndicator(
                         progress = { item.progress },
@@ -131,13 +132,14 @@ private fun AlbumDownloadTaskItem(
             },
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (item.isDownloading) {
-                        IconButton(onClick = { onPauseSong(item.albumId) }) {
-                            Icon(Icons.Default.Pause, contentDescription = "Pause")
-                        }
-                    } else {
+                    // UI pause button ONLY controls isUserPaused state
+                    if (item.isUserPaused) {
                         IconButton(onClick = { onResumeSong(item.albumId) }) {
                             Icon(Icons.Default.PlayArrow, contentDescription = "Resume")
+                        }
+                    } else {
+                        IconButton(onClick = { onPauseSong(item.albumId) }) {
+                            Icon(Icons.Default.Pause, contentDescription = "Pause")
                         }
                     }
                     Icon(

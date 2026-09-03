@@ -30,11 +30,17 @@ fun SettingsScreen(
 ) {
     val accounts by viewModel.storedAccounts.collectAsStateWithLifecycle()
     val storageUsage by viewModel.storageUsage.collectAsStateWithLifecycle()
+    val maxConcurrentDownloads by viewModel.maxConcurrentDownloads.collectAsStateWithLifecycle()
+    val pauseOnMeteredNetwork by viewModel.pauseOnMeteredNetwork.collectAsStateWithLifecycle()
     
     SettingsContent(
         accounts = accounts,
         storageUsage = storageUsage,
+        maxConcurrentDownloads = maxConcurrentDownloads,
+        pauseOnMeteredNetwork = pauseOnMeteredNetwork,
         onClearCache = { viewModel.clearCache(it) },
+        onSetMaxConcurrent = { viewModel.setMaxConcurrentDownloads(it) },
+        onSetPauseOnMetered = { viewModel.setPauseOnMeteredNetwork(it) },
         onBackClick = onBackClick,
         modifier = modifier
     )
@@ -45,7 +51,11 @@ fun SettingsScreen(
 fun SettingsContent(
     accounts: List<UserAccount>,
     storageUsage: Map<String, Long>,
+    maxConcurrentDownloads: Int,
+    pauseOnMeteredNetwork: Boolean,
     onClearCache: (String) -> Unit,
+    onSetMaxConcurrent: (Int) -> Unit,
+    onSetPauseOnMetered: (Boolean) -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -71,6 +81,67 @@ fun SettingsContent(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
+            SettingsSection(title = "Download Settings") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "最大并发下载数", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "限制同时下载的任务数量 (当前: $maxConcurrentDownloads)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedIconButton(
+                            onClick = { if (maxConcurrentDownloads > 1) onSetMaxConcurrent(maxConcurrentDownloads - 1) },
+                            enabled = maxConcurrentDownloads > 1,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Text("-", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Text(
+                            text = "$maxConcurrentDownloads",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                        OutlinedIconButton(
+                            onClick = { if (maxConcurrentDownloads < 16) onSetMaxConcurrent(maxConcurrentDownloads + 1) },
+                            enabled = maxConcurrentDownloads < 16,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Text("+", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "流量计费网络自动暂停", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "使用移动数据/计费网络时自动暂停下载",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = pauseOnMeteredNetwork,
+                        onCheckedChange = onSetPauseOnMetered
+                    )
+                }
+            }
+
             SettingsSection(title = "Storage Management") {
                 if (accounts.isEmpty()) {
                     Text(

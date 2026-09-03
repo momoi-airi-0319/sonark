@@ -25,6 +25,12 @@ class SettingsViewModel(
     val storedAccounts: StateFlow<List<UserAccount>> = repository.storedAccounts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val maxConcurrentDownloads: StateFlow<Int> = repository.maxConcurrentDownloads
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 6)
+
+    val pauseOnMeteredNetwork: StateFlow<Boolean> = repository.pauseOnMeteredNetwork
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     private val _storageUsage = MutableStateFlow<Map<String, Long>>(emptyMap())
     val storageUsage: StateFlow<Map<String, Long>> = _storageUsage.asStateFlow()
 
@@ -103,6 +109,18 @@ class SettingsViewModel(
     fun removeAccount(email: String) {
         viewModelScope.launch {
             repository.removeAccount(email)
+        }
+    }
+
+    fun setMaxConcurrentDownloads(count: Int) {
+        viewModelScope.launch {
+            repository.setMaxConcurrentDownloads(count)
+        }
+    }
+
+    fun setPauseOnMeteredNetwork(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setPauseOnMeteredNetwork(enabled)
         }
     }
 

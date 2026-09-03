@@ -111,10 +111,15 @@ class MainActivity : ComponentActivity() {
                 val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
                 val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
 
+                val songs by viewModel.songs.collectAsStateWithLifecycle()
                 val isPlaying by playbackViewModel.isPlaying.collectAsStateWithLifecycle()
                 val currentSong by playbackViewModel.currentSong.collectAsStateWithLifecycle()
                 val playbackProgress by playbackViewModel.playbackProgress.collectAsStateWithLifecycle()
                 val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
+
+                LaunchedEffect(songs) {
+                    playbackViewModel.updateCurrentAlbumSongs(songs)
+                }
 
                 val authLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.StartIntentSenderForResult(),

@@ -79,4 +79,23 @@ class MusicRepositoryTest {
         verify { engineFactory(match { it.name.contains("user2") }) }
         verify { engine2.setObserver(any()) }
     }
+
+    @Test
+    fun `test download pause and resume state changes`() = runTest {
+        val engine: SonarkEngineInterface = mockk(relaxed = true)
+        val repository = MusicRepository(engine, settingsRepository)
+
+        // Pause download for a song
+        repository.pauseDownload("song_1")
+        
+        // Pause album
+        repository.pauseAlbumDownload("album_1")
+
+        // Resume download
+        repository.resumeDownload("song_1")
+
+        // Pause all and resume all
+        repository.pauseAllDownloads()
+        repository.resumeAllDownloads()
+    }
 }

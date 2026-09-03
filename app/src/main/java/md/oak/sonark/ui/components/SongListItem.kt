@@ -136,6 +136,12 @@ fun SongListItem(
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.primaryContainer
                     )
+                } else if (syncSong.downloadStatus == DownloadStatus.PENDING || syncSong.downloadStatus == DownloadStatus.PAUSED) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.outline
+                    )
                 }
             }
         )

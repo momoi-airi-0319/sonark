@@ -9,6 +9,7 @@ import md.oak.sonark.data.model.Album
 import md.oak.sonark.data.model.AlbumType
 import md.oak.sonark.data.model.Artist
 import md.oak.sonark.data.model.DownloadStatus
+import md.oak.sonark.data.model.PauseReason
 import md.oak.sonark.data.model.SyncSong
 import md.oak.sonark.data.repository.AccountRepository
 import md.oak.sonark.data.repository.MusicRepository
@@ -124,8 +125,13 @@ class MainViewModel(
         val downloading = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.DOWNLOADING }
         val uniqueDownloading = downloading.distinctBy { it.data }
         
-        val pending = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.PENDING }
+        val pending = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.PENDING || it.downloadStatus == DownloadStatus.PAUSED }
         val error = albumSyncSongs.filter { it.downloadStatus == DownloadStatus.ERROR }
+
+        val isUserPaused = activeSyncSongs.all { it.isUserPaused }
+        val pauseReason = if (isUserPaused) {
+            PauseReason.USER_PAUSED
+        } else activeSyncSongs.firstOrNull { it.pauseReason != null }?.pauseReason
 
         return if (first.song.type == AlbumType.CUE) {
             AlbumDownloadItem.Cue(
@@ -135,10 +141,13 @@ class MainViewModel(
                 imageUrl = first.song.imageUrl,
                 progress = totalProgress,
                 totalSongs = albumSyncSongs.size,
+                activeSongs = activeSyncSongs,
                 downloadingSongs = uniqueDownloading,
                 pendingSongsCount = pending.size,
                 errorSongsCount = error.size,
-                isDownloading = downloading.isNotEmpty()
+                isDownloading = downloading.isNotEmpty(),
+                isUserPaused = isUserPaused,
+                pauseReason = pauseReason
             )
         } else {
             AlbumDownloadItem.Normal(
@@ -148,16 +157,29 @@ class MainViewModel(
                 imageUrl = first.song.imageUrl,
                 progress = totalProgress,
                 totalSongs = albumSyncSongs.size,
+                activeSongs = activeSyncSongs,
                 downloadingSongs = uniqueDownloading,
                 pendingSongsCount = pending.size,
                 errorSongsCount = error.size,
-                isDownloading = downloading.isNotEmpty()
+                isDownloading = downloading.isNotEmpty(),
+                isUserPaused = isUserPaused,
+                pauseReason = pauseReason
             )
         }
     }
 
     init {
         loadSongs()
+
+        // Automatically queue all non-downloaded songs for background caching
+        viewModelScope.launch {
+            songs.collect { allSongs ->
+                val undownloaded = allSongs.filter { it.localPath == null && it.downloadStatus == DownloadStatus.NONE }
+                if (undownloaded.isNotEmpty()) {
+                    undownloaded.forEach { repository.resumeDownload(it.song.id) }
+                }
+            }
+        }
     }
 
     fun loadSongs() {

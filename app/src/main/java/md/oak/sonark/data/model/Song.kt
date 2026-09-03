@@ -6,6 +6,12 @@ enum class DownloadStatus {
     NONE, PENDING, DOWNLOADING, PAUSED, COMPLETED, ERROR
 }
 
+enum class PauseReason {
+    USER_PAUSED,       // 用户手动暂停
+    METERED_NETWORK,   // 流量计费网络自动暂停
+    THREAD_LIMIT       // 达到最大线程数等待中
+}
+
 /**
  * Ideal model for a song, containing only core metadata.
  */
@@ -45,5 +51,8 @@ data class SyncSong(
     val coverMd5: String? = null,
     val downloadStatus: DownloadStatus = DownloadStatus.NONE,
     val downloadProgress: Int = 0,
-    val downloadedBytes: Long = 0
+    val downloadedBytes: Long = 0,
+    val isUserPaused: Boolean = false,
+    val pauseReason: PauseReason? = null,
+    val errorMessage: String? = null
 )

@@ -64,7 +64,9 @@ fun createNavEntryProvider(
                     if (syncSong.song.id == currentSong?.song?.id) {
                         navigator.navigate(PlayerKey)
                     } else {
-                        playbackViewModel.playQueue(songs, songs.indexOf(syncSong))
+                        val albumSongs = songs.filter { it.albumId == syncSong.albumId }
+                        val index = albumSongs.indexOfFirst { it.song.id == syncSong.song.id }.coerceAtLeast(0)
+                        playbackViewModel.playAlbum(if (albumSongs.isNotEmpty()) albumSongs else listOf(syncSong), index)
                     }
                 },
                 onRefresh = { viewModel.loadSongs() },
@@ -83,7 +85,10 @@ fun createNavEntryProvider(
                 progress = if (duration > 0) playbackProgress.toFloat() / duration.toFloat() else 0f,
                 onBackClick = { navigator.goBack() },
                 onSongClick = { song ->
-                    playbackViewModel.playQueue(listOf(song), 0)
+                    val allSongs = viewModel.songs.value
+                    val albumSongs = allSongs.filter { it.albumId == song.albumId }
+                    val index = albumSongs.indexOfFirst { it.song.id == song.song.id }.coerceAtLeast(0)
+                    playbackViewModel.playAlbum(if (albumSongs.isNotEmpty()) albumSongs else listOf(song), index)
                 },
                 onAlbumClick = { album ->
                     navigator.navigate(AlbumKey(album.id))
@@ -120,7 +125,10 @@ fun createNavEntryProvider(
                     navigator.navigate(AlbumKey(album.id))
                 },
                 onSongClick = { syncSong ->
-                    playbackViewModel.playQueue(featuredSongsList, featuredSongsList.indexOf(syncSong))
+                    val allSongs = viewModel.songs.value
+                    val albumSongs = allSongs.filter { it.albumId == syncSong.albumId }
+                    val index = albumSongs.indexOfFirst { it.song.id == syncSong.song.id }.coerceAtLeast(0)
+                    playbackViewModel.playAlbum(if (albumSongs.isNotEmpty()) albumSongs else listOf(syncSong), index)
                 },
                 onBackClick = { navigator.goBack() },
                 onLoadMetadata = { songsToLoad -> viewModel.fetchMetadataForSongs(songsToLoad) },
@@ -152,7 +160,8 @@ fun createNavEntryProvider(
                         if (song.song.id == currentSong?.song?.id) {
                             navigator.navigate(PlayerKey)
                         } else {
-                            playbackViewModel.playQueue(albumSongs, albumSongs.indexOf(song))
+                            val index = albumSongs.indexOfFirst { it.song.id == song.song.id }.coerceAtLeast(0)
+                            playbackViewModel.playAlbum(albumSongs, index)
                         }
                     },
                     onBackClick = { navigator.navigate(LibraryKey) },
@@ -168,6 +177,8 @@ fun createNavEntryProvider(
             val duration by playbackViewModel.duration.collectAsStateWithLifecycle()
             val shuffleEnabled by playbackViewModel.shuffleEnabled.collectAsStateWithLifecycle()
             val repeatMode by playbackViewModel.repeatMode.collectAsStateWithLifecycle()
+            val playbackMode by playbackViewModel.currentPlaybackMode.collectAsStateWithLifecycle()
+            val targetAlbumMode by playbackViewModel.targetAlbumMode.collectAsStateWithLifecycle()
 
             PlayerScreen(
                 song = currentSong,
@@ -176,6 +187,9 @@ fun createNavEntryProvider(
                 duration = duration,
                 shuffleEnabled = shuffleEnabled,
                 repeatMode = repeatMode,
+                playbackMode = playbackMode,
+                targetAlbumMode = targetAlbumMode,
+                onSwitchPlaybackMode = { playbackViewModel.switchPlaybackMode() },
                 onTogglePlayback = { playbackViewModel.togglePlayback() },
                 onSeekTo = { playbackViewModel.seekTo(it) },
                 onSkipNext = { playbackViewModel.skipNext() },
